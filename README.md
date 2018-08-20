@@ -1,13 +1,5 @@
 ## countpy: Python Package Metrics
 
-### Deliverables
-
-1. Working, deployed web application
-2. Clean, documented code in PEP-8
-3. A config file that stores some key variables like database credentials and things to do with how the service looks.
-
-### Introduction
-
 Developers of open source Python packages sometimes envy R developers for the simple perks they enjoy, like a reliable web service that gives a reasonable count of the total number of times an R package has been downloaded. To achieve the same, Python developers must launch a Google Query and wait for generally 30 or so seconds. 
 
 Then there are sore spots that are shared by both R and Python developers. Downloads are a shallow metric. Developers often want to know how often is it that other people writing Python scripts and packages using their package. We partly solve this latter problem for Python developers by pooling search results from Github. 
@@ -48,3 +40,12 @@ The structure of the underlying code is pretty simple. The website runs on Flask
 
        ```
 
+### Deliverables
+
+1. Working, deployed web application
+2. Clean, documented code in PEP-8
+3. A config file that stores some key variables like database credentials and things to do with how the service looks.
+
+## Authors
+
+Gaurav Sood and Khanh Tran

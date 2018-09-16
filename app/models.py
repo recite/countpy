@@ -484,3 +484,6 @@ class Repository(HashType):
         # Store package name in repo
         self.packages = list(ext_packages.keys())
         self.set_change('packages')
+
+    def query_packages(self):
+        return (Package(i) for i in self.packages)

@@ -3,19 +3,22 @@
 import re
 import time
 import datetime
+
 from copy import copy
-from collections import deque, namedtuple
+from collections import deque
 from threading import Thread, Lock
+
 from github import Github, RateLimitExceededException
 from github.PaginatedList import PaginatedList
+from github.Repository import Repository as GithubRepo
+
+from app.models import Repository
 from config import GITHUB_LOGINS, GITHUB_SEARCH_PERIOD, GITHUB_SEARCH_WINDOW, GITHUB_SEARCH_QUALIFIERS
 
-MAX_RESULTS_PER_PAGE = 100
-MAX_TOTAL_RESULTS = 1000
+MAX_RESULTS_PER_PAGE = 100  # the largest number of results per page is 100
+MAX_TOTAL_RESULTS = 1000  # by default, GitHub APIv3 only returns 1000 results at maximum
 
 _REPOSITORIES = dict()
-
-ContentFile = None
 
 
 def to_second(time_annotation):
@@ -59,11 +62,14 @@ def slice_period(period, window):
 
 
 class TimeSlices:
-    def __init__(self, period, window):
+    def __init__(self, period=GITHUB_SEARCH_PERIOD, window=GITHUB_SEARCH_WINDOW):
         self._data = slice_period(period, window)
         self._lock = Lock()
         self._total = len(self._data)
         self._count = self._total
+
+    def __len__(self):
+        return self._count
 
     def get(self):
         with self._lock:
@@ -92,6 +98,7 @@ class SearchWorker(Thread):
         self._conn = Github(user, passwd, per_page=per_page)
         self._slices = slices
         self._event = event
+        self._qualifiers = copy(GITHUB_SEARCH_QUALIFIERS).update(self._qualifiers)
         self.per_page = per_page
 
     def run(self):
@@ -104,43 +111,51 @@ class SearchWorker(Thread):
                 break
             self.__search(time_window)
 
-    def __wait(self):
-        delay = self._conn.rate_limiting_resettime - time.time()
-        if delay > 0:
-            time.sleep(delay)
+    def __limit_control(self, task):
+        def waiter(*args, **kwargs):
+            while True:
+                try:
+                    return task(*args, **kwargs)
+                except RateLimitExceededException:
+                    delay = self._conn.rate_limiting_resettime - time.time()
+                    if delay > 0:
+                        time.sleep(delay)
+        return waiter
 
-    def __find_total(self, query):
-        assert isinstance(query, PaginatedList)
-        while True:
-            try:
-                total = query.totalCount
-            except RateLimitExceededException:
-                self.__wait()
-            else:
-                if 0 < MAX_TOTAL_RESULTS < total:
-                    return MAX_TOTAL_RESULTS
-                return total
+    @staticmethod
+    def __find_total(query):
+        total = query.totalCount
+        if 0 < MAX_TOTAL_RESULTS < total:
+            return MAX_TOTAL_RESULTS
+        return total
 
     def __find_items(self, query):
         assert isinstance(query, PaginatedList)
-        total = self.__find_total(query)
+        total = self.__limit_control(self.__find_total)(query)
         if total > 0:
             for i in range(total):
-                while True:
-                    try:
-                        yield query[i]
-                        break
-                    except RateLimitExceededException:
-                        self.__wait()
+                yield self.__limit_control(query.__getitem__)(i)
 
     def __search(self, time_window):
         qualifiers = copy(self._qualifiers)
-        qualifiers.update(GITHUB_SEARCH_QUALIFIERS)
         qualifiers['created'] = time_window
         query = self._conn.search_repositories(self._keyword, **qualifiers)
         for repo in self.__find_items(query):
             if repo.full_name not in _REPOSITORIES:
                 _REPOSITORIES[repo.full_name] = self.__crawl(repo)
+
+    def __find_files(self, repo):
+        def retrieve(path):
+            items = self.__limit_control(repo.get_contents)(path)
+            for item in items:
+                if item.download_url is not None:
+                    if Repository.expects(item.path):
+                        yield item.path, self.__limit_control(item.decoded_content.decode)()
+                else:
+                    yield from retrieve(path=item.path)
+
+        assert isinstance(repo, GithubRepo)
+        return retrieve(path='/')
 
     def __crawl(self, repo):
         return []

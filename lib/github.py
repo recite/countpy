@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
 
 import re
+import os
 import time
 import datetime
+import pickle
 
 from copy import copy
 from collections import deque
 from threading import Thread, Lock
-
 from github import Github, RateLimitExceededException
-from github.PaginatedList import PaginatedList
-from github.Repository import Repository as GithubRepo
 
 from app.models import Repository
 from config import GITHUB_LOGINS, GITHUB_SEARCH_PERIOD, GITHUB_SEARCH_WINDOW, GITHUB_SEARCH_QUALIFIERS
@@ -62,21 +61,45 @@ def slice_period(period, window):
 
 
 class TimeSlices:
+    _save_as_file = os.path.join(os.path.dirname(__file__), '.timeslices')
+
     def __init__(self, period=GITHUB_SEARCH_PERIOD, window=GITHUB_SEARCH_WINDOW):
-        self._data = slice_period(period, window)
         self._lock = Lock()
+        self._data = slice_period(period, window)
         self._total = len(self._data)
         self._count = self._total
+        self._key = ''.join('{}{}'.format(period, window).split())
+        self._done = self.__load()
 
     def __len__(self):
         return self._count
 
+    def __load(self):
+        if os.path.isfile(self._save_as_file):
+            with open(self._save_as_file, 'rb') as fp:
+                data = pickle.load(fp)
+            if self._key in data:
+                return data[self._key]
+            else:
+                os.remove(self._save_as_file)
+        return set()
+
+    def save(self):
+        with open(self._save_as_file, 'wb') as fp:
+            data = {self._key: self._done}
+            pickle.dump(data, fp)
+
+    def done(self, item):
+        with self._lock:
+            self._done.add(item)
+
     def get(self):
         with self._lock:
-            if self._count > 0:
+            while self._count > 0:
                 item = self._data.popleft()
                 self._count -= 1
-                return item
+                if item not in self._done:
+                    return item
             return None
 
     @property
@@ -103,13 +126,12 @@ class SearchWorker(Thread):
 
     def run(self):
         self._event.wait()
-        while True:
-            if not self._event.is_set():
-                break
+        while self._event.is_set():
             time_window = self._slices.get()
             if time_window is None:
                 break
             self.__search(time_window)
+            self._slices.done(time_window)
 
     def __limit_control(self, task):
         def waiter(*args, **kwargs):
@@ -129,36 +151,34 @@ class SearchWorker(Thread):
             return MAX_TOTAL_RESULTS
         return total
 
-    def __find_items(self, query):
-        assert isinstance(query, PaginatedList)
+    def __find_repos(self, query):
         total = self.__limit_control(self.__find_total)(query)
         if total > 0:
             for i in range(total):
                 yield self.__limit_control(query.__getitem__)(i)
-
-    def __search(self, time_window):
-        qualifiers = copy(self._qualifiers)
-        qualifiers['created'] = time_window
-        query = self._conn.search_repositories(self._keyword, **qualifiers)
-        for repo in self.__find_items(query):
-            if repo.full_name not in _REPOSITORIES:
-                _REPOSITORIES[repo.full_name] = self.__crawl(repo)
 
     def __find_files(self, repo):
         def retrieve(path):
             items = self.__limit_control(repo.get_contents)(path)
             for item in items:
                 if item.download_url is not None:
-                    if Repository.expects(item.path):
-                        yield item.path, self.__limit_control(item.decoded_content.decode)()
+                    yield item.path, self.__limit_control(item.decoded_content.decode)()
                 else:
                     yield from retrieve(path=item.path)
-
-        assert isinstance(repo, GithubRepo)
         return retrieve(path='/')
 
-    def __crawl(self, repo):
-        return []
+    def __search(self, time_window):
+        qualifiers = copy(self._qualifiers)
+        qualifiers['created'] = time_window
+        query = self._conn.search_repositories(self._keyword, **qualifiers)
+        for repo in self.__find_repos(query):
+            newrepo = Repository(repo.full_name)
+            newrepo.set_id(repo.id)
+            newrepo.set_url(repo.url)
+            for path, content in self.__find_files(repo):
+                newrepo.add_file(path, content)
+            newrepo.find_packages()
+            newrepo.commit_changes()
 
 
 class SearchCode:

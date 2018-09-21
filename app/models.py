@@ -437,12 +437,14 @@ class Repository(HashType):
             return None
 
     def set_id(self, id_):
-        self.id = id_
-        self.set_change('id')
+        if id_ != self.id:
+            self.id = id_
+            self.set_change('id')
 
     def set_url(self, url):
-        self.url = url
-        self.set_change('url')
+        if url != self.url:
+            self.url = url
+            self.set_change('url')
 
     def add_file(self, path, content):
         try:

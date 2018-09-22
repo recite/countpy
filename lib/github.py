@@ -9,20 +9,25 @@ import pickle
 from copy import copy
 from collections import deque
 from threading import Thread, Lock, Event
+from configparser import ConfigParser
 from github import Github, RateLimitExceededException
 
 from app.models import Repository
 from .progress import ProgressBar
 
-from config import GITHUB_LOGINS, GITHUB_SEARCH_PERIOD, GITHUB_SEARCH_WINDOW, GITHUB_SEARCH_QUALIFIERS
-
 __all__ = ['SearchCode', 'TimeSlices', 'SearchWorker']
 
+# Default constants
 MAX_RESULTS_PER_PAGE = 100  # the largest number of results per page is 100
 MAX_TOTAL_RESULTS = 1000  # by default, GitHub APIv3 only returns 1000 results at maximum
 
 # Method for matching a string if it is time_annotation
 match_time_annotation = re.compile(r'^\s*([1-9]+)?\s*(\w+)\s*$').match
+
+# Read Github settings
+config = ConfigParser(
+    converters={'dict': lambda s: {k.strip(): v.strip() for k, v in (i.split(':') for i in s.split('\n'))}})
+config.read(os.path.join(os.path.dirname(__file__), 'github.ini'))
 
 
 def _to_second(time_annotation):
@@ -58,14 +63,15 @@ def _to_second(time_annotation):
     raise ValueError('Unknown time annotation: "%s"' % time_annotation)
 
 
-def _slice_period(period, window):
+def _slice_period(period, window, reverse=True):
     """
     Slices time period into time windows. Format each time window (a slice) by
     following the time pattern of Github search API.
 
     :param str period: a time period to be sliced (time_annotation format)
     :param str window: a time window for slicing (time_annotation format)
-    :return: a sequence of formatted time windows
+    :param bool reverse: reverse order of result list returned
+    :return: list of formatted time windows
     :rtype: deque[str]
     """
 
@@ -83,17 +89,20 @@ def _slice_period(period, window):
         slices.append('%s..%s' % (cursor.isoformat(), stop.isoformat()))
         cursor = stop
 
-    return slices
+    return slices.reverse() if reverse else slices
 
 
 class TimeSlices:
     _save_as_file = os.path.join(os.path.dirname(__file__), '.timeslices')
 
-    def __init__(self, period=GITHUB_SEARCH_PERIOD, window=GITHUB_SEARCH_WINDOW, resume=True):
+    def __init__(self, period=None, window=None, reverse=None, resume=True):
         self._resume = resume
-        self._data = _slice_period(period, window)
         self._datakey = ''.join('{}{}'.format(period, window).split())
-
+        self._data = _slice_period(
+            period=period or config.get('search_options', 'period'),
+            window=window or config.get('search_options', 'window'),
+            reverse=reverse or config.getboolean('search_options', 'newest_first')
+        )
         self._total = len(self._data)
         self._count = self._total
 
@@ -162,9 +171,9 @@ class TimeSlices:
 
 class SearchWorker(Thread):
     _keyword = ''  # empty means matching all
-    _qualifiers = dict(
-        language='python',
-    )
+
+    _qualifiers = config.getdict('search_options', 'qualifiers', fallback={})
+    _qualifiers['language'] = 'python'
 
     def __init__(self, user, passwd, slices, event, per_page=MAX_RESULTS_PER_PAGE):
         assert isinstance(slices, TimeSlices), 'An instance of %r is required.' % TimeSlices
@@ -173,7 +182,6 @@ class SearchWorker(Thread):
         self._conn = Github(user, passwd, per_page=per_page)
         self._slices = slices
         self._event = event
-        self._qualifiers = copy(GITHUB_SEARCH_QUALIFIERS).update(self._qualifiers)
         self.per_page = per_page
 
     def run(self):
@@ -234,8 +242,9 @@ class SearchWorker(Thread):
 
 
 class SearchCode:
-    def __init__(self, resume=True, progress=True):
-        self.slices = TimeSlices(resume=resume)
+    def __init__(self, resume=True, search_order='desc', progress=True):
+        reverse = search_order.lower() == 'desc'
+        self.slices = TimeSlices(resume=resume, reverse=reverse)
 
         total = len(self.slices)
         suffix = 'of %d searches completed' % total
@@ -244,7 +253,7 @@ class SearchCode:
         self._run_event = Event()
         self.workers = [
             SearchWorker(user, passwd, self.slices, self._run_event)
-            for user, passwd in GITHUB_LOGINS.items()
+            for user, passwd in config.items('credentials')
         ]
 
     def run(self):

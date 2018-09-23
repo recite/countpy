@@ -1,3 +1,41 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 # -*- coding: utf-8 -*-
+
+import os
+import sys
+
+_MAIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(_MAIN_DIR)
+
+import signal
+from argparse import ArgumentParser
+from lib.github import SearchCode
+
+
+def get_args():
+    parser = ArgumentParser()
+    parser.add_argument('--no-resume', action='store_true', default=False,
+                        help='prevent the program from loading and resuming from previous incomplete running state, '
+                             'also not allow it to save its running state if being suddenly stopped')
+    return parser.parse_args()
+
+
+def main():
+    def exit_handler(*_):
+        search.end()
+
+    signal.signal(signal.SIGINT, exit_handler)
+    signal.signal(signal.SIGTERM, exit_handler)
+
+    try:
+        args = get_args()
+        search = SearchCode(resume=not args.no_resume)
+        search.run()
+        search.wait_until_finish()
+    except Exception as exc:
+        return exc
+
+
+if __name__ == '__main__':
+    sys.exit(main())

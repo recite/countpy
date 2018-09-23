@@ -33,7 +33,7 @@ class HashType:
     _prefix = ''
 
     _num_fields = ()
-    _text_fields = ()
+    _text_fields = ('name',)
     _json_fields = ()
     _date_fields = ('updated',)
 
@@ -107,13 +107,13 @@ class HashType:
     @classmethod
     def use_val(cls, value, field):
         if field in cls._text_fields:
-            return value
+            return value if _is_set(value) else cls._defaults.get(field)
         elif field in cls._num_fields:
-            return int(value) if _is_set(value) else None
+            return int(value) if _is_set(value) else cls._defaults.get(field)
         elif field in cls._json_fields:
-            return json.loads(value) if _is_set(value) else None
+            return json.loads(value) if _is_set(value) else cls._defaults.get(field)
         elif field in cls._date_fields:
-            return datetime.utcfromtimestamp(float(value)) if _is_set(value) else None
+            return datetime.utcfromtimestamp(float(value)) if _is_set(value) else cls._defaults.get(field)
         raise NotImplementedError('Unsupported field "%s" with value "%s"' % (field, value))
 
     @classmethod
@@ -161,7 +161,7 @@ class HashType:
 
     def __load(self):
         for field, value in self.getall(self.name).items():
-            if self.is_changed(field):  # object is initialized with attributes
+            if field == 'name' or self.is_changed(field):
                 continue
             setattr(self, field, value if _is_set(value) else self._defaults.get(field))
 
@@ -278,6 +278,8 @@ class RepoFiles:
             if set(other_struct.keys()) == set(cls._ftypes):
                 if all(isinstance(other_struct[i], dict) for i in cls._ftypes):
                     return other_struct
+        elif isinstance(other_struct, cls):
+            return other_struct.as_dict()
         raise TypeError('Unsupported struct: %r' % other_struct)
 
     def as_dict(self):
@@ -395,7 +397,7 @@ class Package(HashType):
 
 class Repository(HashType):
     _prefix = 'repo'
-    _text_fields = ('id', 'url')
+    _text_fields = ('name', 'id', 'url')
     _json_fields = ('files', 'packages')
 
     _defaults = {
@@ -424,10 +426,10 @@ class Repository(HashType):
         return super(Repository, cls).store_val(value, field)
 
     @staticmethod
-    def expects(path):
+    def expects_file(path):
         return RepoFiles.is_pyfile(path) or RepoFiles.is_reqfile(path)
 
-    def exists(self, path):
+    def exists_file(self, path):
         return path in self.files
 
     def get_content(self, path):
@@ -463,17 +465,18 @@ class Repository(HashType):
         for path, content in self.files.pyfiles:
             packages = RepoFiles.parse_pyfile(content)
             for pkgname in packages - local_packages:
-                pkg = ext_packages.get(pkgname) or Package(pkgname)
-                pkg.add_pyfile(path, self.name)
-                if pkgname not in ext_packages:
-                    ext_packages[pkgname] = pkg
+                if pkgname:
+                    pkg = ext_packages.get(pkgname) or Package(pkgname)
+                    pkg.add_pyfile(path, self.name)
+                    if pkgname not in ext_packages:
+                        ext_packages[pkgname] = pkg
 
         # Find packages in requirement file
         if _is_set(self.files.reqfile):
-            _, content = self.reqfile
+            _, content = self.files.reqfile
             packages = RepoFiles.parse_reqfile(content)
             for pkgname, version in packages.items():
-                if pkgname not in local_packages:
+                if pkgname and pkgname not in local_packages:
                     pkg = ext_packages.get(pkgname) or Package(pkgname)
                     pkg.add_pkgver(version, self.name)
                     if pkgname not in ext_packages:

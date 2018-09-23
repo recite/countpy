@@ -12,6 +12,7 @@ from threading import Thread, Lock, Event
 from configparser import ConfigParser
 from github import Github, RateLimitExceededException
 
+from . import _MODULE_DIR
 from app.models import Repository
 from .progress import ProgressBar
 
@@ -27,7 +28,7 @@ match_time_annotation = re.compile(r'^\s*([1-9]+)?\s*(\w+)\s*$').match
 # Read Github settings
 config = ConfigParser(
     converters={'dict': lambda s: {k.strip(): v.strip() for k, v in (i.split(':') for i in s.split('\n'))}})
-config.read(os.path.join(os.path.dirname(__file__), 'github.ini'))
+config.read(os.path.join(_MODULE_DIR, 'github.ini'))
 
 
 def _to_second(time_annotation):
@@ -80,7 +81,7 @@ def _slice_period(period, window, reverse=True):
     cur_date = datetime.datetime.utcnow().replace(microsecond=0, tzinfo=datetime.timezone.utc)
     cursor = cur_date - period
 
-    slices = deque()
+    slices = []
     while True:
         stop = cursor + window
         if stop >= cur_date:
@@ -89,11 +90,11 @@ def _slice_period(period, window, reverse=True):
         slices.append('%s..%s' % (cursor.isoformat(), stop.isoformat()))
         cursor = stop
 
-    return slices.reverse() if reverse else slices
+    return deque(reversed(slices) if reverse else slices)
 
 
 class TimeSlices:
-    _save_as_file = os.path.join(os.path.dirname(__file__), '.timeslices')
+    _save_as_file = os.path.join(_MODULE_DIR, '.timeslices')
 
     def __init__(self, period=None, window=None, reverse=None, resume=True):
         self._resume = resume
@@ -101,7 +102,7 @@ class TimeSlices:
         self._data = _slice_period(
             period=period or config.get('search_options', 'period'),
             window=window or config.get('search_options', 'window'),
-            reverse=reverse or config.getboolean('search_options', 'newest_first')
+            reverse=reverse if reverse is not None else config.getboolean('search_options', 'newest_first')
         )
         self._total = len(self._data)
         self._count = self._total
@@ -129,6 +130,10 @@ class TimeSlices:
         if os.path.isfile(self._save_as_file):
             os.remove(self._save_as_file)
         return None
+
+    def has_changes(self):
+        with self._lock:
+            return self._count != self._total
 
     def save(self):
         if self._resume:
@@ -183,15 +188,29 @@ class SearchWorker(Thread):
         self._slices = slices
         self._event = event
         self.per_page = per_page
+        self._exception = None
+
+    def get_exception(self):
+        return self._exception
+
+    def is_running(self):
+        return self._event.is_set()
 
     def run(self):
         self._event.wait()
-        while self._event.is_set():
-            time_window = self._slices.get()
-            if time_window is None:
+        try:
+            while self._event.is_set():
+                time_window = self._slices.get()
+                if time_window:
+                    try:
+                        self.__search(time_window)
+                        self._slices.done(time_window)
+                        continue
+                    except AssertionError:
+                        pass
                 break
-            self.__search(time_window)
-            self._slices.done(time_window)
+        except Exception as exc:
+            self._exception = exc
 
     def __limit_control(self, task):
         def waiter(*args, **kwargs):
@@ -215,14 +234,17 @@ class SearchWorker(Thread):
         total = self.__limit_control(self.__find_total)(query)
         if total > 0:
             for i in range(total):
+                assert self.is_running()
                 yield self.__limit_control(query.__getitem__)(i)
 
     def __find_files(self, repo):
         def retrieve(path):
             items = self.__limit_control(repo.get_contents)(path)
             for item in items:
+                assert self.is_running()
                 if item.download_url is not None:
-                    yield item.path, self.__limit_control(item.decoded_content.decode)()
+                    if Repository.expects_file(item.path):
+                        yield item.path, self.__limit_control(bytes.decode)(item.decoded_content)
                 else:
                     yield from retrieve(path=item.path)
         return retrieve(path='/')
@@ -248,7 +270,7 @@ class SearchCode:
 
         total = len(self.slices)
         suffix = 'of %d searches completed' % total
-        self._progress = ProgressBar(total, suffix=suffix) if progress else None
+        self._progress = ProgressBar(total, prefix='Searching', suffix=suffix) if progress else None
 
         self._run_event = Event()
         self.workers = [
@@ -256,15 +278,26 @@ class SearchCode:
             for user, passwd in config.items('credentials')
         ]
 
+        assert self.workers, 'No Github credential found.'
+
     def run(self):
+        assert self.workers, 'No worker to run.'
         for worker in self.workers:
             worker.start()
         self._run_event.set()
 
-    def end(self):
+    def is_running(self):
+        return self._run_event.is_set()
+
+    def stop(self):
         self._run_event.clear()
         self.join_workers()
-        self.slices.save()
+
+    def end(self):
+        if self.is_running():
+            self.stop()
+        if self.slices.has_changes():
+            self.slices.save()
         if self._progress is not None:
             self._progress.end()
 
@@ -273,13 +306,22 @@ class SearchCode:
             if worker.is_alive():
                 worker.join()
 
+    def raise_worker_exceptions(self):
+        for worker in self.workers:
+            exc = worker.get_exception()
+            if exc:
+                raise exc
+
     def show_progress(self):
         if self._progress is not None:
             self._progress.print()
-            while not self.slices.is_completed():
-                time.sleep(1)
+            while not self.slices.is_completed() and self.is_running():
+                self.raise_worker_exceptions()
                 self._progress.print(self.slices.remain)
+                time.sleep(.1)
 
     def wait_until_finish(self):
-        self.show_progress()
-        self.join_workers()
+        if self.is_running():
+            self.show_progress()
+            self.join_workers()
+            self.raise_worker_exceptions()

@@ -10,7 +10,7 @@ class ProgressBar:
 
     __print_fmt = '\r{prefix} |{bar}| {rate}% {suffix}'
 
-    def __init__(self, total, prefix='Progress:', suffix='Complete', decimals=1, length=100):
+    def __init__(self, total, prefix='Progress:', suffix='Complete', decimals=1, length=50):
         self.total = int(total)
         self.length = int(length)
         self.params = {'prefix': prefix, 'suffix': suffix}

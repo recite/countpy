@@ -1,10 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Title</title>
+  <title>{% block title %}{%- if title %}{{ title }}{% endif -%}{% endblock %}</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+{%- if links -%}
+  {% for rel, type, file in links %}
+  <link rel="{{ rel }}"{% if type %} type="{{ type }}"{% endif %} href="{{ file|static_url }}"/>
+  {% endfor %}
+{%- endif -%}
+{%- if scripts -%}
+  {% for file in scripts %}
+  <script src="{{ file|static_url }}"></script>
+  {% endfor %}
+{%- endif -%}
 </head>
 <body>
-
+<header class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <a class="navbar-brand mb-0 font-weight-bold" href="{{ url_for('index') }}">countpy</a>
+{%- if navbar -%}
+  <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav"
+          aria-expanded="false" aria-label="Toggle navigation">
+    <span class="navbar-toggler-icon"></span>
+  </button>
+  <div class="collapse navbar-collapse" id="navbarNav">
+    <ul class="navbar-nav">
+    {% for href, caption in navbar %}
+      {% if href %}
+      <li class="nav-item{% if request.path == href %} active{% endif %}">
+        <a class="nav-link" href="{{ href }}">{{ caption }}</a>
+      </li>
+      {% endif %}
+    {% endfor %}
+    </ul>
+  </div>
+{%- endif -%}
+</header>
+<div class="container col-sm-11 col-md-9 col-lg-7">
+  {%- with messages = get_flashed_messages(with_categories=true) -%}
+    {%- if messages -%}
+      {%- for category, message in messages -%}
+        {%- if category == 'failed' -%}
+          {%- set class = 'danger' -%}
+        {%- else -%}
+          {%- set class = 'success' -%}
+        {%- endif -%}
+        <div class="alert alert-{{ class }} alert-dismissible">
+          <button type="button" class="close" aria-label="Close" data-dismiss="alert"><span
+              aria-hidden="true">&times;</span></button>
+          {{ message|safe }}
+        </div>
+      {%- endfor -%}
+    {%- endif -%}
+  {%- endwith -%}
+  <div class="mb-5 h2">
+    <br><h4>{% block header %}{%- if header %}{{ header }}{% endif -%}{% endblock %}</h4>
+  </div>
+  {%- block body %}{% endblock -%}
+</div>
+<footer class="mt-5 page-footer">
+  <div class="text-center">
+    © 2018 Copyright: <a href="{{ url_for('index') }}">countpy</a>
+  </div>
+</footer>
 </body>
 </html>

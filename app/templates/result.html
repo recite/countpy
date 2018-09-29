@@ -1,0 +1,26 @@
+{% extends "index.html" %}
+{% block result %}
+{%- if results -%}
+  <div class="mt-5">
+    <h2 class="float-left font-weight-bold mb-5">Results</h2>
+    <table class="table table-hover">
+    {%- for row in results %}
+      {%- if row and loop.first %}
+        {%- set rtag = 'thead' %}
+        {%- set ctag = 'th' %}
+      {%- else %}
+        {%- set rtag = 'tbody' %}
+        {%- set ctag = 'td' %}
+      {%- endif %}
+      <{{ rtag  }}>
+        <tr>
+        {%- for cell in row %}
+          <{{ ctag }}>{{ cell }}</{{ ctag }}>
+        {%- endfor %}
+        </tr>
+      </{{ rtag }}>
+    {%- endfor %}
+    </table>
+  </div>
+{%- endif -%}
+{% endblock %}

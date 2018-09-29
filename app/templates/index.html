@@ -1,10 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Title</title>
-</head>
-<body>
-
-</body>
-</html>
+{% extends "layout.html" %}
+{% block body %}
+  <form action="" method="post">
+    <div class="input-group mb-3">
+      <input name="keywords" type="text" class="form-control border-dark" style="box-shadow: none;"
+             placeholder="Enter python libraries to search..."{% if keywords %} value="{{ keywords|safe }}"{% endif %}>
+      <div class="input-group-append">
+        <button class="btn btn-outline-dark" type="submit" style="box-shadow: none;"><span
+            class="oi oi-magnifying-glass"></span></button>
+      </div>
+    </div>
+  </form>
+  {%- block result %}{% endblock -%}
+{% endblock %}

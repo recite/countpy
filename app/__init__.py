@@ -15,4 +15,5 @@ app.secret_key = os.urandom(24)
 app.config.from_object('config')
 db = StrictRedis(decode_responses=True)
 
+from . import utils
 from . import views

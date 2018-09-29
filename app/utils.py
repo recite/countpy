@@ -6,47 +6,22 @@ app.utils
 Utilities for the application.
 """
 
-__all__ = [
-    'parse_db_uri'
-]
+import os
+from flask import url_for
+from . import app
 
 
-def parse_db_uri(conf):
-    """
-    Parse input database config into database URI format
+def template_exists(template):
+    return os.path.exists(os.path.join(app.root_path, app.template_folder, template))
 
-    :param conf:    input database config
-    :type conf:     dict
-    :return:        string of database config in URI format
-    :rtype:         str
-    """
 
-    # Input config must be a dict
-    assert isinstance(conf, dict)
+def endswith(str1, str2):
+    return str1.lower().endswith(str2.lower())
 
-    # Key 'dbname' is required in config
-    if 'dbname' not in conf:
-        raise ValueError('No database specified')
 
-    # Read and parse config
-    dbname = str(conf['dbname'])
-    host = str(conf.get('host', '127.0.0.1') or '127.0.0.1')
-    port = str(conf.get('port', ''))
-    user = str(conf.get('user', ''))
-    passwd = str(conf.get('passwd', ''))
-    driver = str(conf.get('driver', 'postgresql')).lower() or 'postgresql'
+def static_url(filename):
+    return url_for('static', filename=filename)
 
-    if user and passwd:
-        user = '%s:%s@' % (user, passwd)
-    elif user:
-        user = '%s@' % user
-    elif passwd:
-        raise ValueError('No user with that password')
 
-    if port:
-        if not port.isdigit():
-            raise ValueError('Database port must be a number')
-        host = '%s:%s' % (host, port)
-
-    # Return parsed config in URI format
-    return '{}://{}{}/{}'.format(driver, user, host, dbname)
+app.jinja_env.tests['endswith'] = endswith
+app.jinja_env.filters['static_url'] = static_url

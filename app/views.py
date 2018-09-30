@@ -9,8 +9,9 @@ Rendering application pages.
 from copy import deepcopy
 from flask import render_template, request, abort, flash
 from . import app
-from .utils import template_exists
+from .utils import template_exists, find_packages
 
+DATE_FORMAT = '%Y-%m-%d'
 GLOBAL_VARS = {
     'navbar': [
         # (href, caption)
@@ -83,18 +84,18 @@ def contact():
 
 
 def search(keywords):
-    results = [
-        app.config.get('SEARCH_RESULT_HEADER_ROW'),
-        ('flask', '100', '1000', '20', '29-09-2018'),
-        ('jinja2', '100', '1000', '20', '29-09-2018'),
-        ('redis', '100', '1000', '20', '29-09-2018')
-    ]
+    packages = find_packages(names=keywords.split())
+    if packages:
+        page_title = app.config.get('INDEX_PAGE_TITLE')
+        page_header = app.config.get('INDEX_PAGE_HEADER')
+        table_header = app.config.get('SEARCH_RESULT_HEADER_ROW')
+        results = [table_header] + [
+            (p.name, p.num_repos, p.num_pyfiles, p.num_reqfiles, p.str_updated(DATE_FORMAT))
+            for p in packages
+        ]
+        return _render('result', total=len(packages), title=page_title,
+                       header=page_header, keywords=keywords, results=results)
 
-    variables = {
-        'title': app.config.get('INDEX_PAGE_TITLE'),
-        'header': app.config.get('INDEX_PAGE_HEADER'),
-        'keywords': keywords,
-        'results': results
-    }
-
-    return _render('result', **variables)
+    else:
+        flash('No packages found.', 'failed')
+        return _render('index', keywords=keywords)

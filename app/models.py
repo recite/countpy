@@ -14,7 +14,7 @@ from typing import Set, List, Dict, DefaultDict
 from collections import namedtuple, defaultdict
 from . import db
 
-__all__ = ['Repository']
+__all__ = ['Repository', 'Package']
 
 _KEYSEP = ':'
 
@@ -48,7 +48,11 @@ class HashType:
             prefix = '{}{}'.format(prefix, _KEYSEP)
         if name.startswith(prefix):
             return name
-        return '{}{}'.format(prefix, name)
+        return '{}{}'.format(prefix, name.lower())
+
+    @staticmethod
+    def no_prefix(key):
+        return key.split(_KEYSEP, maxsplit=1)[-1]
 
     @classmethod
     def exists(cls, name):
@@ -59,8 +63,10 @@ class HashType:
         return cls(name) if cls.exists(name) else None
 
     @classmethod
-    def query_all(cls):
-        return (cls(name) for name in db.keys(cls.genkey('*')))
+    def query_all(cls, name_only=False, lazy=True):
+        parser = cls.no_prefix if name_only else cls
+        ret = (parser(key) for key in db.keys(cls.genkey('*')))
+        return ret if lazy else list(ret)
 
     @classmethod
     def set(cls, name, field, value):
@@ -119,6 +125,11 @@ class HashType:
     @classmethod
     def all_fields(cls):
         return cls._num_fields + cls._text_fields + cls._json_fields + cls._date_fields
+
+    def str_updated(self, fmt):
+        if _is_set(self.updated):
+            return self.updated.strftime(fmt)
+        return ''
 
     def __new__(cls, name, **attrs):
         if attrs:
@@ -358,6 +369,7 @@ class Package(HashType):
             return set(value)
         elif field == 'pyfiles':
             return defaultdict(set, {k: set(v) for k, v in value.items()})
+        return value
 
     @classmethod
     def store_val(cls, value, field):

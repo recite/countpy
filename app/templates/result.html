@@ -1,8 +1,13 @@
 {% extends "index.html" %}
 {% block result %}
 {%- if results -%}
+  {%- if total %}
+    {%- set rtitle = total|string + ' results found' %}
+  {%- else %}
+    {%- set rtitle = 'Results' %}
+  {%- endif %}
   <div class="mt-5">
-    <h2 class="float-left font-weight-bold mb-5">Results</h2>
+    <h4 class="float-left font-weight-bold mb-5 font-italic">{{ rtitle }}</h4>
     <table class="table table-hover">
     {%- for row in results %}
       {%- if row and loop.first %}

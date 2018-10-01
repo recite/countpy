@@ -28,12 +28,14 @@ def main():
     signal.signal(signal.SIGINT, exit_handler)
     signal.signal(signal.SIGTERM, exit_handler)
 
+    args = get_args()
+    search = SearchCode(resume=not args.no_resume)
+    search.run()
+
     try:
-        args = get_args()
-        search = SearchCode(resume=not args.no_resume)
-        search.run()
         search.wait_until_finish()
     except Exception as exc:
+        search.end()
         return exc
 
 

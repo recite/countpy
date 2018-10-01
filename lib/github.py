@@ -6,11 +6,12 @@ import time
 import datetime
 import pickle
 
+from math import ceil
 from copy import copy
-from collections import deque
+from collections import deque, Iterable
 from threading import Thread, Lock, Event
 from configparser import ConfigParser
-from github import Github, RateLimitExceededException
+from github import Github, RateLimitExceededException, GithubException
 
 from . import _MODULE_DIR
 from app.models import Repository
@@ -21,6 +22,10 @@ __all__ = ['SearchCode', 'TimeSlices', 'SearchWorker']
 # Default constants
 MAX_RESULTS_PER_PAGE = 100  # the largest number of results per page is 100
 MAX_TOTAL_RESULTS = 1000  # by default, GitHub APIv3 only returns 1000 results at maximum
+
+# Delay controls
+DELAY_FOR_EXCEPTION = 180  # 3 minutes
+DELAY_PER_REQUEST = 1
 
 # Method for matching a string if it is time_annotation
 match_time_annotation = re.compile(r'^\s*([1-9]+)?\s*(\w+)\s*$').match
@@ -91,6 +96,10 @@ def _slice_period(period, window, reverse=True):
         cursor = stop
 
     return deque(reversed(slices) if reverse else slices)
+
+
+def _minzero(number):
+    return 0 if number < 0 else number
 
 
 class TimeSlices:
@@ -189,6 +198,7 @@ class SearchWorker(Thread):
         self._event = event
         self.per_page = per_page
         self._exception = None
+        self._last_request = None
 
     def get_exception(self):
         return self._exception
@@ -214,13 +224,19 @@ class SearchWorker(Thread):
 
     def __limit_control(self, task):
         def waiter(*args, **kwargs):
+            if self._last_request is not None:
+                expect = self._last_request + DELAY_PER_REQUEST
+                time.sleep(_minzero(time.time() - expect))
             while True:
                 try:
-                    return task(*args, **kwargs)
+                    result = task(*args, **kwargs)
                 except RateLimitExceededException:
-                    delay = self._conn.rate_limiting_resettime - time.time()
-                    if delay > 0:
-                        time.sleep(delay)
+                    time.sleep(_minzero(self._conn.rate_limiting_resettime - time.time()))
+                except GithubException:
+                    time.sleep(DELAY_FOR_EXCEPTION)
+                else:
+                    self._last_request = time.time()
+                    return result
         return waiter
 
     @staticmethod
@@ -233,21 +249,37 @@ class SearchWorker(Thread):
     def __find_repos(self, query):
         total = self.__limit_control(self.__find_total)(query)
         if total > 0:
-            for i in range(total):
+            pages = ceil(total / self.per_page)
+            for i in range(pages):
                 assert self.is_running()
-                yield self.__limit_control(query.__getitem__)(i)
+                try:
+                    yield self.__limit_control(query.__getitem__)(i)
+                except IndexError:
+                    break
 
     def __find_files(self, repo):
         def retrieve(path):
             items = self.__limit_control(repo.get_contents)(path)
+            if not isinstance(items, Iterable):
+                items = [items]
             for item in items:
                 assert self.is_running()
                 if item.download_url is not None:
                     if Repository.expects_file(item.path):
-                        yield item.path, self.__limit_control(bytes.decode)(item.decoded_content)
+                        files.append(
+                            (item.path, self.__limit_control(bytes.decode)(item.decoded_content))
+                        )
                 else:
-                    yield from retrieve(path=item.path)
-        return retrieve(path='/')
+                    folders.append(item.path)
+
+        files, folders = list(), deque()
+        retrieve(path='/')
+        while True:
+            try:
+                retrieve(path=folders.popleft())
+            except IndexError:
+                break
+        return files
 
     def __search(self, time_window):
         qualifiers = copy(self._qualifiers)

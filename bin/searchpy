@@ -34,9 +34,9 @@ def main():
 
     try:
         search.wait_until_finish()
-    except Exception as exc:
+    except Exception:
         search.end()
-        return exc
+        raise
 
 
 if __name__ == '__main__':

@@ -5,9 +5,10 @@ import os
 import time
 import datetime
 import pickle
+import logging
 
-from math import ceil
 from copy import copy
+from random import randint
 from collections import deque, Iterable
 from threading import Thread, Lock, Event
 from configparser import ConfigParser
@@ -15,7 +16,6 @@ from github import Github, RateLimitExceededException, GithubException
 
 from . import _MODULE_DIR
 from app.models import Repository
-from .progress import ProgressBar
 
 __all__ = ['SearchCode', 'TimeSlices', 'SearchWorker']
 
@@ -24,8 +24,10 @@ MAX_RESULTS_PER_PAGE = 100  # the largest number of results per page is 100
 MAX_TOTAL_RESULTS = 1000  # by default, GitHub APIv3 only returns 1000 results at maximum
 
 # Delay controls
-DELAY_FOR_EXCEPTION = 180  # 3 minutes
-DELAY_PER_REQUEST = 1
+EXCEPTION_DELAY = 180  # 3 minutes
+REQUEST_DELAY_MIN = 1
+REQUEST_DELAY_MAX = 1
+REQUEST_DELAY_MAX_DECIMALS = 999999
 
 # Method for matching a string if it is time_annotation
 match_time_annotation = re.compile(r'^\s*([1-9]+)?\s*(\w+)\s*$').match
@@ -34,6 +36,22 @@ match_time_annotation = re.compile(r'^\s*([1-9]+)?\s*(\w+)\s*$').match
 config = ConfigParser(
     converters={'dict': lambda s: {k.strip(): v.strip() for k, v in (i.split(':') for i in s.split('\n'))}})
 config.read(os.path.join(_MODULE_DIR, 'github.ini'))
+
+
+def _log_configurer():
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(fmt='%(message)s'))
+    root = logging.getLogger(__package__)
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
+
+def _randf(minint, maxint, maxdec):
+    base = randint(minint, maxint)
+    return float('{}{}'.format(
+        str(float(base)).rstrip('0'),
+        '%0{}d'.format(len(str(maxdec))) % randint(0, int(maxdec))
+    )) if int(maxdec) > 0 else float(base)
 
 
 def _to_second(time_annotation):
@@ -100,6 +118,50 @@ def _slice_period(period, window, reverse=True):
 
 def _minzero(number):
     return 0 if number < 0 else number
+
+
+class ProgressBar:
+    __end_char = '\n'
+    __empty_char = '-'
+    __filled_char = '█'
+
+    __print_fmt = '\r{prefix} |{bar}| {rate}% {suffix}'
+
+    def __init__(self, total, prefix='Progress:', suffix='Complete', decimals=1, length=50):
+        self.total = int(total)
+        self.length = int(length)
+        self.params = {'prefix': prefix, 'suffix': suffix}
+        self.__rate_fmt = '{0:.%sf}' % decimals
+        self.__printed = False
+        self.__last_printed = False
+
+    def __print_bar(self, end=None, **params):
+        end = end or '\r'
+        print(self.__print_fmt.format(**params), end=end)
+        if not self.__printed:
+            self.__printed = True
+        if end == self.__end_char:
+            self.__last_printed = True
+
+    def __gen_params(self, complete):
+        filled_length = int(self.length * complete // self.total)
+        filled_chars = self.__filled_char * filled_length
+
+        empty_length = self.length - filled_length
+        empty_chars = self.__empty_char * empty_length
+
+        rate = self.__rate_fmt.format(complete / float(self.total) * 100)
+        bar = '{}{}'.format(filled_chars, empty_chars)
+        return dict(bar=bar, rate=rate, **self.params)
+
+    def print(self, complete=0):
+        end = self.__end_char if complete == self.total else None
+        params = self.__gen_params(complete)
+        self.__print_bar(end, **params)
+
+    def end(self):
+        if self.__printed and not self.__last_printed:
+            print()
 
 
 class TimeSlices:
@@ -194,11 +256,13 @@ class SearchWorker(Thread):
         assert per_page > 0, 'Number of items per page must be greater than zero.'
         super(SearchWorker, self).__init__()
         self._conn = Github(user, passwd, per_page=per_page)
+        self._user = user
         self._slices = slices
         self._event = event
         self.per_page = per_page
         self._exception = None
         self._last_request = None
+        self._logger = logging.getLogger('%s.%s' % (__package__, self.__class__.__name__))
 
     def get_exception(self):
         return self._exception
@@ -208,10 +272,11 @@ class SearchWorker(Thread):
 
     def run(self):
         self._event.wait()
+        self._logger.info('Search worker (%s) is started' % self._user)
         try:
             while self._event.is_set():
                 time_window = self._slices.get()
-                if time_window:
+                if time_window is not None:
                     try:
                         self.__search(time_window)
                         self._slices.done(time_window)
@@ -222,21 +287,31 @@ class SearchWorker(Thread):
         except Exception as exc:
             self._exception = exc
 
+        self._logger.info('Search worker (%s) is stopped.' % self._user)
+
     def __limit_control(self, task):
         def waiter(*args, **kwargs):
-            if self._last_request is not None:
-                expect = self._last_request + DELAY_PER_REQUEST
-                time.sleep(_minzero(time.time() - expect))
+            try:
+                seconds = _randf(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX, REQUEST_DELAY_MAX_DECIMALS)
+                time.sleep(self._last_request + seconds - time.time())
+            except (TypeError, ValueError):
+                pass
+
             while True:
                 try:
                     result = task(*args, **kwargs)
-                except RateLimitExceededException:
-                    time.sleep(_minzero(self._conn.rate_limiting_resettime - time.time()))
-                except GithubException:
-                    time.sleep(DELAY_FOR_EXCEPTION)
+                except RateLimitExceededException as exc:
+                    delay = _minzero(self._conn.rate_limiting_resettime - time.time())
+                    self._logger.info('GitHub limit reached: [%s], resume in %s seconds...' % (exc, delay))
+                    time.sleep(delay)
+                except GithubException as exc:
+                    self._logger.info('GitHub server responses: [%s], '
+                                      'resume in %s seconds...' % (exc, EXCEPTION_DELAY))
+                    time.sleep(EXCEPTION_DELAY)
                 else:
                     self._last_request = time.time()
                     return result
+
         return waiter
 
     @staticmethod
@@ -249,8 +324,8 @@ class SearchWorker(Thread):
     def __find_repos(self, query):
         total = self.__limit_control(self.__find_total)(query)
         if total > 0:
-            pages = ceil(total / self.per_page)
-            for i in range(pages):
+            self._logger.info('* %d repositories found' % total)
+            for i in range(total):
                 assert self.is_running()
                 try:
                     yield self.__limit_control(query.__getitem__)(i)
@@ -266,6 +341,7 @@ class SearchWorker(Thread):
                 assert self.is_running()
                 if item.download_url is not None:
                     if Repository.expects_file(item.path):
+                        self._logger.info('      + %s' % item.path)
                         files.append(
                             (item.path, self.__limit_control(bytes.decode)(item.decoded_content))
                         )
@@ -282,27 +358,40 @@ class SearchWorker(Thread):
         return files
 
     def __search(self, time_window):
+        self._logger.info('Searching time window: %s' % time_window)
         qualifiers = copy(self._qualifiers)
         qualifiers['created'] = time_window
         query = self._conn.search_repositories(self._keyword, **qualifiers)
+
         for repo in self.__find_repos(query):
+            self._logger.info('* Repository: %s (%s) - %s' % (repo.full_name, repo.id, repo.url))
             newrepo = Repository(repo.full_name)
             newrepo.set_id(repo.id)
             newrepo.set_url(repo.url)
+
+            self._logger.info('  --> Crawling contents...')
             for path, content in self.__find_files(repo):
                 newrepo.add_file(path, content)
+
+            self._logger.info('  --> Finding packages...')
             newrepo.find_packages()
+
+            self._logger.info('  --> Saving "%s"...' % repo.full_name)
             newrepo.commit_changes()
 
 
 class SearchCode:
-    def __init__(self, resume=True, search_order='desc', progress=True):
+    def __init__(self, resume=True, search_order='desc', verbose=False):
         reverse = search_order.lower() == 'desc'
         self.slices = TimeSlices(resume=resume, reverse=reverse)
 
-        total = len(self.slices)
-        suffix = 'of %d searches completed' % total
-        self._progress = ProgressBar(total, prefix='Searching', suffix=suffix) if progress else None
+        if verbose:
+            self._progress = None
+            _log_configurer()
+        else:
+            total = len(self.slices)
+            suffix = 'of %d searches completed' % total
+            self._progress = ProgressBar(total, prefix='Searching', suffix=suffix)
 
         self._run_event = Event()
         self.workers = [

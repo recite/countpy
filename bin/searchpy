@@ -18,6 +18,8 @@ def get_args():
     parser.add_argument('--no-resume', action='store_true', default=False,
                         help='prevent the program from loading and resuming from previous incomplete running state, '
                              'also not allow it to save its running state if being suddenly stopped')
+    parser.add_argument('--verbose', action='store_true', default=False,
+                        help='Displays searching progress in verbose')
     return parser.parse_args()
 
 
@@ -25,15 +27,16 @@ def main():
     def exit_handler(*_):
         search.end()
 
-    signal.signal(signal.SIGINT, exit_handler)
     signal.signal(signal.SIGTERM, exit_handler)
 
     args = get_args()
-    search = SearchCode(resume=not args.no_resume)
+    search = SearchCode(resume=not args.no_resume, verbose=args.verbose)
     search.run()
 
     try:
         search.wait_until_finish()
+    except KeyboardInterrupt:
+        search.end()
     except Exception:
         search.end()
         raise

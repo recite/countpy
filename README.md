@@ -1,10 +1,10 @@
 ## countpy: Python Package Metrics
 
-Developers of open source Python packages sometimes envy R developers for the simple perks they enjoy, like a reliable web service that gives a reasonable count of the total number of times an R package has been downloaded. To achieve the same, Python developers must launch a Google Query and wait for generally 30 or so seconds. 
+Developers of open-source Python packages sometimes envy R developers for the simple perks they enjoy, like a reliable web service that gives a reasonable count of the total number of times an R package has been downloaded. To achieve the same, Python developers must launch a Google Query and wait for generally 30 or so seconds. 
 
-Then there are sore spots that are shared by both R and Python developers. Downloads are a shallow metric. Developers often want to know how often is it that other people writing Python scripts and packages using their package. We partly solve this latter problem for Python developers by pooling search results from Github. 
+Then there are sore spots that are shared by both R and Python developers. Downloads are a shallow metric. Developers often want to know how often people writing Python scripts and packages use their package. We partly solve this latter problem for Python developers by pooling search results from Github.  And in doing so, give them one reasonable lower bound of the closest proxy to a citation in software---proof that people used a piece of software to do something.
 
-[countpy.com](http://countpy.com) delivers the number of times a package has been called in the requirements file, and how often it is called in the import statement of any repository in Python. 
+[countpy.com](http://countpy.com) provides the number of times a package has been called in the requirements file, and how often it has been imported. 
 
 We leverage the Github search API to achieve this.
 

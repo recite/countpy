@@ -168,13 +168,13 @@ class TimeSlices:
     _save_as_file = os.path.join(_MODULE_DIR, '.timeslices')
 
     def __init__(self, period=None, window=None, reverse=None, resume=True):
+        period = period or config.get('search_options', 'period')
+        window = window or config.get('search_options', 'window')
+        reverse = reverse if reverse is not None else config.getboolean('search_options', 'newest_first')
+
         self._resume = resume
-        self._datakey = ''.join('{}{}'.format(period, window).split())
-        self._data = _slice_period(
-            period=period or config.get('search_options', 'period'),
-            window=window or config.get('search_options', 'window'),
-            reverse=reverse if reverse is not None else config.getboolean('search_options', 'newest_first')
-        )
+        self._datakey = '_'.join('{}:{}'.format(period, window).split())
+        self._data = _slice_period(period, window, reverse)
         self._total = len(self._data)
         self._count = self._total
 

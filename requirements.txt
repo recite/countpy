@@ -2,5 +2,5 @@ flask>=1.0.2
 jinja2>=2.10
 uwsgi>=2.0.17
 python-levenshtein
-pygithub
+pygithub==1.40
 redis

@@ -40,11 +40,9 @@ The structure of the underlying code is pretty simple. The website runs on Flask
 
        ```
 
-### Deliverables
+### Code Organization
 
-1. Working, deployed web application
-2. Clean, documented code in PEP-8
-3. A config file that stores some key variables like database credentials and things to do with how the service looks.
+* [config file]() stores some key variables like database credentials and things to do with how the service looks.
 
 ## Authors
 

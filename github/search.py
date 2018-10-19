@@ -246,11 +246,6 @@ class TimeSlices:
 
 
 class SearchWorker(Thread):
-    _keyword = ''  # empty means matching all
-
-    _qualifiers = config.getdict('search_options', 'qualifiers', fallback={})
-    _qualifiers['language'] = 'python'
-
     def __init__(self, user, passwd, slices, event, per_page=MAX_RESULTS_PER_PAGE):
         assert isinstance(slices, TimeSlices), 'An instance of %r is required.' % TimeSlices
         assert per_page > 0, 'Number of items per page must be greater than zero.'
@@ -286,8 +281,9 @@ class SearchWorker(Thread):
                 break
         except Exception as exc:
             self._exception = exc
-
-        self._logger.info('Search worker (%s) is stopped.' % self._user)
+            raise
+        else:
+            self._logger.info('Search worker (%s) is stopped.' % self._user)
 
     def __limit_control(self, task):
         def waiter(*args, **kwargs):

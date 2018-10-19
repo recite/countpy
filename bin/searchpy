@@ -9,8 +9,17 @@ _MAIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(_MAIN_DIR)
 
 import signal
+import logging
 from argparse import ArgumentParser
-from lib.github import SearchCode
+from github.github import SearchCode
+
+
+def log_configurer():
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(fmt='%(message)s'))
+    root = logging.getLogger(__package__)
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
 
 
 def get_args():
@@ -43,4 +52,5 @@ def main():
 
 
 if __name__ == '__main__':
+    log_configurer()
     sys.exit(main())

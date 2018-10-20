@@ -8,9 +8,9 @@ from . import RATE_LIMIT_URL
 
 __all__ = ['GithubLimit', 'github_limit', 'reconnect']
 
-MIN_REMAINING_OF_LIMIT = 0
+MIN_REMAINING_OF_LIMIT = 1
 MIN_DELAY_PER_REQUEST = 1
-MORE_DELAY_IF_OUT_LIMIT = .5
+MORE_DELAY_IF_OUT_LIMIT = 1
 SHORT_BREAK_DELAY = 1
 MEDIUM_BREAK_DELAY = 3
 LONG_BREAK_DELAY = 5
@@ -129,6 +129,10 @@ def reconnect(request):
         while count < MAX_RETRIES_PER_REQUEST:
             try:
                 return request(*args, **kwargs)
+            except AssertionError as exc:
+                print('Request error: %s' % exc)
+                time.sleep(LONG_BREAK_DELAY)
+                count += 1
             except (Timeout, ConnectionError):
                 time.sleep(MEDIUM_BREAK_DELAY)
                 count += 1

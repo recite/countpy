@@ -9,7 +9,13 @@ from . import _get_logger, get_endpoint
 from .utils import parse_json
 from .limit import GithubLimit, github_limit, reconnect
 
-__all__ = ['GithubClient', 'Pagination', 'ContentRetriever', 'GithubContent']
+__all__ = [
+    'GithubClient',
+    'Pagination',
+    'ContentRetriever',
+    'GithubContent',
+    'GithubSearch'
+]
 
 DEFAULT_REQUEST_TIMEOUT = 15
 MAX_RESULTS_PER_PAGE = 100
@@ -21,6 +27,7 @@ class GithubClient:
     }
 
     def __init__(self, endpoint=None, auth=None, headers=None, timeout=None):
+        self._endpoint = endpoint
         self.method, self.url = get_endpoint(endpoint)
         if headers:
             self.default_headers.update(headers)
@@ -28,9 +35,9 @@ class GithubClient:
         self.auth = auth
         self.limit = GithubLimit(endpoint)
         self.logger = _get_logger(self.__class__.__name__)
-        self.initialize()
+        self.__create()
 
-    def initialize(self):
+    def __create(self):
         self.session = Session()
         if self.auth:
             self.session.auth = self.auth
@@ -38,7 +45,7 @@ class GithubClient:
 
     def reset(self):
         self.session.close()
-        self.initialize()
+        self.__create()
 
     def delay(self, seconds):
         self.logger.info('Resume in %s second%s...'
@@ -62,15 +69,16 @@ class GithubClient:
 
 
 class Pagination(GithubClient):
-    def __init__(self, per_page=None, *args, **kwargs):
-        super(Pagination, self).__init__(*args, **kwargs)
-        self.per_page = per_page or MAX_RESULTS_PER_PAGE
-        self.incomplete = None
-        self.total = None
+    def __init__(self, per_page=None, parser=None, **kwargs):
+        super(Pagination, self).__init__(**kwargs)
+        self.per_page = per_page
+        if per_page and per_page > MAX_RESULTS_PER_PAGE:
+            self.per_page = MAX_RESULTS_PER_PAGE
         self.items = None
         self._links = None
+        self._parser = parser or SimpleNamespace
 
-    def __parse_links(self, response):
+    def _parse_links(self, response):
         links = {'cur': response.url}
         if 'Link' in response.headers:
             parse = lambda x, y: (y.split('=')[-1].strip(' "'), x.strip('< >'))
@@ -79,14 +87,15 @@ class Pagination(GithubClient):
                 for i in response.headers['Link'].split(',')))
         self._links = links
 
-    def __parse_data(self, data):
-        self.total = data['total_count']
-        self.incomplete = data['incomplete_results']
-        self.items = [SimpleNamespace(**item) for item in data['items']]
+    def _parse_data(self, data):
+        if not isinstance(data, list):
+            data = [data]
+        self.items = [self._parser(**item) for item in data]
 
-    def __prep_params(self, url, mapping):
+    def _prep_params(self, url, mapping):
         mapping.setdefault('params', {})
-        mapping['params'].setdefault('per_page', self.per_page)
+        if self.per_page is not None:
+            mapping['params'].setdefault('per_page', self.per_page)
         # Params in URL will take precedence
         if url:
             qs = splitquery(url)[-1]
@@ -96,10 +105,10 @@ class Pagination(GithubClient):
                         del mapping['params'][k]
 
     def request(self, url=None, **kwargs):
-        self.__prep_params(url, kwargs)
+        self._prep_params(url, kwargs)
         data, resp = super(Pagination, self).request(url=url, **kwargs)
-        self.__parse_data(data)
-        self.__parse_links(resp)
+        self._parse_links(resp)
+        self._parse_data(data)
 
     def has_next(self):
         return 'next' in self._links
@@ -122,6 +131,46 @@ class Pagination(GithubClient):
                 break
 
 
+class GithubSearch(Pagination):
+    def __init__(self, keyword=None,
+                 qualifiers=None, sort=None, order=None, **kwargs):
+        super(GithubSearch, self).__init__(**kwargs)
+        assert self._endpoint and self._endpoint.startswith('search')
+        self._keyword = keyword or ''
+        self._qualifiers = qualifiers or {}
+        self._sort, self._order = sort, order
+        self.incomplete = None
+        self.total = None
+
+    def _parse_data(self, data):
+        self.total = data['total_count']
+        self.incomplete = data['incomplete_results']
+        super(GithubSearch, self)._parse_data(data=data['items'])
+
+    def search(self, keyword=None, sort=None, order=None, **qualifiers):
+        sort = sort or self._sort
+        order = order or self._order
+        keyword = keyword or self._keyword
+
+        # Construct qualifiers for search query
+        qualifiers.update(
+            {k: v for k, v in self._qualifiers.items() if k not in qualifiers})
+        query = '+'.join(
+            [keyword] + ['{}:{}'.format(k, v) for k, v in qualifiers.items()]
+        ).strip(' +')
+
+        # Construct search params
+        assert query, '"q" param must not be empty.'
+        params = {'q': query}
+        if sort:
+            params['sort'] = sort
+        if order:
+            params['order'] = order
+
+        # Make request
+        self.request(params=params)
+
+
 class GithubContent(SimpleNamespace):
     def is_file(self):
         return self.type == 'file'
@@ -131,7 +180,8 @@ class GithubContent(SimpleNamespace):
         if self.download_url is not None:
             with Session() as s:
                 resp = s.get(self.download_url)
-            assert resp.status_code is codes.OK, resp
+            assert resp.status_code is codes.OK, '{} {}'.format(
+                resp.status_code, resp.text)
             return resp.text
 
     @property

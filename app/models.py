@@ -409,7 +409,7 @@ class Package(HashType):
 
 class Repository(HashType):
     _prefix = 'repo'
-    _text_fields = ('name', 'id', 'url')
+    _text_fields = ('name', 'id', 'url', 'contents_url')
     _json_fields = ('files', 'packages')
 
     _defaults = {

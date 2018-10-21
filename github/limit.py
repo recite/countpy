@@ -3,7 +3,6 @@
 import time
 from requests.exceptions import Timeout, ConnectionError
 from .exceptions import *
-from .utils import parse_json
 from . import RATE_LIMIT_URL
 
 __all__ = ['GithubLimit', 'github_limit', 'reconnect']
@@ -46,7 +45,7 @@ class GithubLimit:
     def ask(self, session, force=False):
         if force or self.stale():
             response = session.get(RATE_LIMIT_URL)
-            data, _ = parse_json(response)
+            data = response.json()
             self.update(data['resources'][self._key])
             self._set_delay()
 

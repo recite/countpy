@@ -3,11 +3,12 @@
 import time
 from collections import deque
 from types import SimpleNamespace
-from requests import Session, codes
+from requests import Session, Response, codes
 from urllib.parse import splitquery, parse_qsl, urljoin
+from json.decoder import JSONDecodeError
 from . import _get_logger, get_endpoint
-from .utils import parse_json
 from .limit import GithubLimit, github_limit, reconnect
+from .exceptions import *
 
 __all__ = [
     'GithubClient',
@@ -19,6 +20,37 @@ __all__ = [
 
 DEFAULT_REQUEST_TIMEOUT = 15
 MAX_RESULTS_PER_PAGE = 100
+
+
+def parse_response(response):
+    assert isinstance(response, Response), 'Invalid response object.'
+    try:
+        data = response.json()
+    except JSONDecodeError:
+        cls = DataDecodeError
+        data = response.text
+    else:
+        if response.status_code is codes.OK:
+            return data, response
+
+        cls = GithubException
+        message = data.get('message', '').lower()
+
+        if response.status_code is codes.UNAUTHORIZED:
+            cls = LoginError
+
+        elif response.status_code is codes.FORBIDDEN:
+            if 'invalid user-agent' in message:
+                cls = UserAgentError
+            elif 'rate limit exceeded' in message:
+                cls = RateLimitError
+            elif 'abuse' in message:
+                cls = AbuseLimitError
+
+        elif response.status_code is codes.NOT_FOUND:
+            cls = NotFoundError
+
+    raise cls(response.status_code, data)
 
 
 class GithubClient:
@@ -65,7 +97,7 @@ class GithubClient:
         response = self.session.request(
             method, url, timeout=timeout, json=data, **kwargs)
 
-        return parse_json(response)
+        return parse_response(response)
 
 
 class Pagination(GithubClient):

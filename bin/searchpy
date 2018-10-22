@@ -33,6 +33,13 @@ def get_args():
                         help='Only does retrieving contents for all '
                              'repositories stored in database.')
 
+    parser.add_argument('--anonymous', action='store_true', default=False,
+                        help='Connect to Github without authentication.')
+
+    parser.add_argument('--threads', metavar='NUM', type=int, default=1,
+                        help='Number of threads running, used only if '
+                             '"--anonymous" exists (default is 1).')
+
     args = parser.parse_args()
 
     if args.search_only and args.retrieve_only:
@@ -56,10 +63,14 @@ def main():
         search.end()
 
     signal.signal(signal.SIGTERM, exit_handler)
-
     args = get_args()
     search = SearchCode(
-        resume=not args.no_resume, verbose=args.verbose, mode=args.mode)
+        resume=not args.no_resume,
+        verbose=args.verbose,
+        mode=args.mode,
+        anonymous=args.anonymous,
+        threads=args.threads
+    )
     search.run()
 
     try:

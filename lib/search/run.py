@@ -10,7 +10,8 @@ __all__ = ['SearchCode']
 
 
 class SearchCode:
-    def __init__(self, resume=True, search_order=None, verbose=False, mode=None):
+    def __init__(self, resume=True, search_order=None,
+                 verbose=False, mode=None, anonymous=False, threads=None):
         reverse = None
         if search_order is not None:
             reverse = search_order.lower() == 'desc'
@@ -25,9 +26,16 @@ class SearchCode:
             self._progress = ProgressBar(total, prefix='Searching', suffix=suffix)
 
         self._run_event = Event()
+
+        if anonymous:
+            threads = int(threads) if threads else 1
+            auths = [(None, None)] * threads
+        else:
+            auths = config.items('credentials')
+
         self.workers = [
             SearchWorker(user, passwd, self.slices, self._run_event, mode)
-            for user, passwd in config.items('credentials')
+            for user, passwd in auths
         ]
 
         assert self.workers, 'No Github credential found.'

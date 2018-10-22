@@ -4,32 +4,51 @@
 
 import os
 import sys
+import signal
+from argparse import ArgumentParser
 
 _MAIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(_MAIN_DIR)
 
-import signal
-import logging
-from argparse import ArgumentParser
-from github.github import SearchCode
-
-
-def log_configurer():
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(fmt='%(message)s'))
-    root = logging.getLogger(__package__)
-    root.addHandler(handler)
-    root.setLevel(logging.INFO)
+from lib.search import SearchCode
 
 
 def get_args():
     parser = ArgumentParser()
+
     parser.add_argument('--no-resume', action='store_true', default=False,
-                        help='prevent the program from loading and resuming from previous incomplete running state, '
-                             'also not allow it to save its running state if being suddenly stopped')
+                        help='Prevent the program from loading and resuming '
+                             'from previous incomplete running state, also '
+                             'not allow it to save its running state if being '
+                             'suddenly stopped.')
+
     parser.add_argument('--verbose', action='store_true', default=False,
                         help='Displays searching progress in verbose')
-    return parser.parse_args()
+
+    parser.add_argument('--search-only', action='store_true', default=False,
+                        help='Only searches for repositories from Github '
+                             'without retrieving contents.')
+
+    parser.add_argument('--retrieve-only', action='store_true', default=False,
+                        help='Only does retrieving contents for all '
+                             'repositories stored in database.')
+
+    args = parser.parse_args()
+
+    if args.search_only and args.retrieve_only:
+        parser.error('Using "--search-only" and "--retrieve-only" in one '
+                     'command is not allowed.')
+
+    elif args.search_only:
+        args.mode = 'search-only'
+
+    elif args.retrieve_only:
+        args.mode = 'retrieve-only'
+
+    else:
+        args.mode = None
+
+    return args
 
 
 def main():
@@ -39,7 +58,8 @@ def main():
     signal.signal(signal.SIGTERM, exit_handler)
 
     args = get_args()
-    search = SearchCode(resume=not args.no_resume, verbose=args.verbose)
+    search = SearchCode(
+        resume=not args.no_resume, verbose=args.verbose, mode=args.mode)
     search.run()
 
     try:
@@ -52,5 +72,4 @@ def main():
 
 
 if __name__ == '__main__':
-    log_configurer()
     sys.exit(main())

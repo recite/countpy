@@ -3,7 +3,7 @@
 import time
 from collections import deque
 from types import SimpleNamespace
-from requests import Session, codes
+from requests import Session
 from urllib.parse import splitquery, parse_qsl, urljoin
 from . import _get_logger, get_endpoint
 from .limit import GithubLimit, github_limit, reconnect
@@ -181,9 +181,8 @@ class GithubContent(SimpleNamespace):
         if self.download_url is not None:
             with Session() as s:
                 resp = s.get(self.download_url)
-            assert resp.status_code is codes.OK, '{} {}'.format(
-                resp.status_code, resp.text)
-            return resp.text
+            data, _ = parse_response(resp, json=False)
+            return data
 
     @property
     def content(self):

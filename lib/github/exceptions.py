@@ -17,14 +17,15 @@ __all__ = [
     'UserAgentError',
     'RateLimitError',
     'AbuseLimitError',
+    'MaxRetriesExceeded',
     'parse_response'
 ]
 
 
-def parse_response(response):
+def parse_response(response, json=True):
     assert isinstance(response, Response), 'Invalid response object.'
     try:
-        data = response.json()
+        data = response.json() if json else response.text
     except JSONDecodeError:
         cls = DataDecodeError
         data = response.text
@@ -83,4 +84,8 @@ class RateLimitError(GithubException):
 
 
 class AbuseLimitError(GithubException):
+    pass
+
+
+class MaxRetriesExceeded(Exception):
     pass

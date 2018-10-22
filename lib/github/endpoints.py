@@ -2,6 +2,8 @@
 
 from .client import GithubSearch
 
+__all__ = ['SearchRepositories']
+
 
 class SearchRepositories(GithubSearch):
     def __init__(self, **kwargs):

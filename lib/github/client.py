@@ -225,17 +225,17 @@ class GithubContent(SimpleNamespace):
 
 
 class ContentRetriever(GithubClient):
-    def __init__(self, contents_url, auth=None, timeout=None):
+    def __init__(self, auth=None, timeout=None):
         super(ContentRetriever, self).__init__(auth=auth, timeout=timeout)
-        self.method, self.url = 'GET', contents_url
+        self.method = 'GET'
 
-    def retrieve(self, path='.'):
-        data, _ = self.request(url=urljoin(self.url, path))
+    def retrieve(self, url):
+        data, _ = self.request(url=url)
         if not isinstance(data, list):
             data = [data]
         yield from (GithubContent(**i) for i in data)
 
-    def traverse(self):
+    def traverse(self, contents_url):
         folders = deque(['.'])
         while True:
             try:
@@ -243,7 +243,7 @@ class ContentRetriever(GithubClient):
             except IndexError:
                 break
             else:
-                for item in self.retrieve(folder):
+                for item in self.retrieve(urljoin(contents_url, folder)):
                     if item.is_file():
                         yield item
                     else:

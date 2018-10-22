@@ -46,6 +46,7 @@ class GithubClient:
     def reset(self):
         self.session.close()
         self.__create()
+        self.limit.ask(self.session, force=True)
 
     def delay(self, seconds):
         self.logger.info('Resume in %s second%s...'

@@ -138,8 +138,7 @@ class HashType:
             assert set(attrs.keys()) <= set(cls.all_fields())
         instance = object.__new__(cls)
         instance._changes = set()
-        if not cls.exists(name):
-            instance.set_change('name')
+        instance._existed = False
         return instance
 
     def __init__(self, name, **attrs):
@@ -172,7 +171,13 @@ class HashType:
 
     def __load(self):
         for field, value in self.getall(self.name).items():
-            if field == 'name' or self.is_changed(field):
+            if field == 'name':
+                if value is None:
+                    self.set_change('name')
+                else:
+                    self._existed = True
+                continue
+            elif self.is_changed(field):
                 continue
             setattr(self, field, value if _is_set(value) else self._defaults.get(field))
 
@@ -207,7 +212,7 @@ class HashType:
         self.__commit(fields=self.all_fields())
 
     def is_existed(self):
-        return self.exists(self.name)
+        return self._existed
 
 
 class RepoFiles:
@@ -409,17 +414,20 @@ class Package(HashType):
 
 class Repository(HashType):
     _prefix = 'repo'
+    _num_fields = ('retrieved',)
     _text_fields = ('name', 'id', 'url', 'contents_url')
     _json_fields = ('files', 'packages')
 
     _defaults = {
         'files': RepoFiles(),
-        'packages': []
+        'packages': [],
+        'retrieved': False
     }
 
     id = ...  # type: str
     url = ...  # type: str
-
+    contents_url = ...  # type: str
+    retrieved = ...  # type: bool
     files = ...  # type: RepoFiles
     packages = ...  # type: List[str]
 
@@ -428,6 +436,8 @@ class Repository(HashType):
         value = super(Repository, cls).use_val(value, field)
         if field == 'files':
             return RepoFiles(files=value)
+        elif field == 'retrieved':
+            return bool(value)
         else:
             return value
 
@@ -435,11 +445,17 @@ class Repository(HashType):
     def store_val(cls, value, field):
         if field == 'files':
             value = value.as_dict()
+        elif field == 'retrieved':
+            value = 1 if value is True else 0
         return super(Repository, cls).store_val(value, field)
 
     @staticmethod
     def expects_file(path):
         return RepoFiles.is_pyfile(path) or RepoFiles.is_reqfile(path)
+
+    @property
+    def full_name(self):
+        return self.name
 
     def exists_file(self, path):
         return path in self.files
@@ -459,6 +475,17 @@ class Repository(HashType):
         if url != self.url:
             self.url = url
             self.set_change('url')
+
+    def set_contents_url(self, contents_url):
+        if contents_url != self.contents_url:
+            self.contents_url = contents_url
+            self.set_change('contents_url')
+
+    def set_retrieved(self, value):
+        value = bool(value)
+        if value != self.retrieved:
+            self.retrieved = value
+            self.set_change('retrieved')
 
     def add_file(self, path, content):
         try:

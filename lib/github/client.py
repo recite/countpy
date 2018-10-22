@@ -3,12 +3,11 @@
 import time
 from collections import deque
 from types import SimpleNamespace
-from requests import Session, Response, codes
+from requests import Session, codes
 from urllib.parse import splitquery, parse_qsl, urljoin
-from json.decoder import JSONDecodeError
 from . import _get_logger, get_endpoint
 from .limit import GithubLimit, github_limit, reconnect
-from .exceptions import *
+from .exceptions import parse_response
 
 __all__ = [
     'GithubClient',
@@ -20,37 +19,6 @@ __all__ = [
 
 DEFAULT_REQUEST_TIMEOUT = 15
 MAX_RESULTS_PER_PAGE = 100
-
-
-def parse_response(response):
-    assert isinstance(response, Response), 'Invalid response object.'
-    try:
-        data = response.json()
-    except JSONDecodeError:
-        cls = DataDecodeError
-        data = response.text
-    else:
-        if response.status_code is codes.OK:
-            return data, response
-
-        cls = GithubException
-        message = data.get('message', '').lower()
-
-        if response.status_code is codes.UNAUTHORIZED:
-            cls = LoginError
-
-        elif response.status_code is codes.FORBIDDEN:
-            if 'invalid user-agent' in message:
-                cls = UserAgentError
-            elif 'rate limit exceeded' in message:
-                cls = RateLimitError
-            elif 'abuse' in message:
-                cls = AbuseLimitError
-
-        elif response.status_code is codes.NOT_FOUND:
-            cls = NotFoundError
-
-    raise cls(response.status_code, data)
 
 
 class GithubClient:
@@ -88,7 +56,7 @@ class GithubClient:
     def request(self, method=None, url=None, data=None, **kwargs):
         method = method or self.method
         url = url or self.url
-        timeout = kwargs.pop('timeout', default=self.timeout)
+        timeout = kwargs.pop('timeout', self.timeout)
 
         if 'data' in kwargs or 'json' in kwargs:
             raise NotImplementedError('Using "data" or "json" as argument is'
@@ -187,9 +155,9 @@ class GithubSearch(Pagination):
         # Construct qualifiers for search query
         qualifiers.update(
             {k: v for k, v in self._qualifiers.items() if k not in qualifiers})
-        query = '+'.join(
+        query = ' '.join(
             [keyword] + ['{}:{}'.format(k, v) for k, v in qualifiers.items()]
-        ).strip(' +')
+        ).strip()
 
         # Construct search params
         assert query, '"q" param must not be empty.'

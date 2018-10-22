@@ -6,6 +6,8 @@ github.exceptions
 
 This module contains the set of Github's exceptions.
 """
+from requests import Response, codes
+from json.decoder import JSONDecodeError
 
 __all__ = [
     'GithubException',
@@ -14,8 +16,40 @@ __all__ = [
     'NotFoundError',
     'UserAgentError',
     'RateLimitError',
-    'AbuseLimitError'
+    'AbuseLimitError',
+    'parse_response'
 ]
+
+
+def parse_response(response):
+    assert isinstance(response, Response), 'Invalid response object.'
+    try:
+        data = response.json()
+    except JSONDecodeError:
+        cls = DataDecodeError
+        data = response.text
+    else:
+        if response.status_code is codes.OK:
+            return data, response
+
+        cls = GithubException
+        message = data.get('message', '').lower()
+
+        if response.status_code is codes.UNAUTHORIZED:
+            cls = LoginError
+
+        elif response.status_code is codes.FORBIDDEN:
+            if 'invalid user-agent' in message:
+                cls = UserAgentError
+            elif 'rate limit exceeded' in message:
+                cls = RateLimitError
+            elif 'abuse' in message:
+                cls = AbuseLimitError
+
+        elif response.status_code is codes.NOT_FOUND:
+            cls = NotFoundError
+
+    raise cls(response.status_code, data)
 
 
 class GithubException(Exception):

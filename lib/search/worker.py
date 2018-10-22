@@ -30,6 +30,7 @@ class SearchWorker(Thread):
         self._retriever = None
 
         mode = mode or 'both'
+        auth = (user, passwd) if user else None
 
         if mode == 'both' or mode == 'search-only':
             self._search = SearchRepositories(
@@ -38,12 +39,12 @@ class SearchWorker(Thread):
                 sort=self._sort,
                 order=self._order,
                 per_page=self._per_page,
-                auth=(user, passwd),
+                auth=auth,
                 timeout=self._timeout
             )
 
         if mode == 'both' or mode == 'retrieve-only':
-            self._retriever = ContentRetriever(auth=(user, passwd))
+            self._retriever = ContentRetriever(auth=auth)
 
     def get_exception(self):
         return self._exception
@@ -98,6 +99,7 @@ class SearchWorker(Thread):
 
         self._logger.info('Retrieving contents for all repositories in DB...')
         time.sleep(1)
+
         for repo in Repository.query_all():
             assert self.is_running()
             if repo.retrieved:
@@ -120,7 +122,8 @@ class SearchWorker(Thread):
                     continue
                 self._logger.info('  (+) %s' % file.path)
                 repo.add_file(file.path, file.content)
-                self._logger.info('  --> Finding packages...')
-                repo.find_packages()
-                self._logger.info('  --> Saving repository...' % repo.full_name)
-                repo.commit_changes()
+
+            self._logger.info('  --> Finding packages...')
+            repo.find_packages()
+            self._logger.info('  --> Saving repository...')
+            repo.commit_changes()

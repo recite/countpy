@@ -45,7 +45,7 @@ class GithubLimit:
     def ask(self, session, force=False):
         if force or self.stale():
             response = session.get(RATE_LIMIT_URL)
-            data = response.json()
+            data, _ = parse_response(response)
             self.update(data['resources'][self._key])
             self._set_delay()
 

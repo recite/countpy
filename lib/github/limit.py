@@ -1,74 +1,42 @@
 # -*- coding: utf-8 -*-
 
 import time
-from requests.exceptions import Timeout, ConnectionError
-from .exceptions import *
 from . import RATE_LIMIT_URL
+from .exceptions import parse_response, handle_exception, MaxRetriesExceeded
 
-__all__ = ['GithubLimit', 'github_limit', 'reconnect']
+__all__ = ['GithubLimit', 'retry']
 
 MIN_REMAINING_OF_LIMIT = 1
 MIN_DELAY_PER_REQUEST = 1
 MORE_DELAY_IF_OUT_LIMIT = 1
-SHORT_BREAK_DELAY = 2
-MEDIUM_BREAK_DELAY = 5
-LONG_BREAK_DELAY = 10
 MAX_RETRIES_PER_REQUEST = 5
 
 
-def github_limit(request):
-    def handler(client, *args, **kwargs):
-        client.limit.ask(session=client.session)
-        client.limit.delay()
+def retry(with_limit):
+    def wrapper(request):
+        def handler(*args, **kwargs):
+            count = 1
+            client = None
 
-        count = 1
-        while count <= MAX_RETRIES_PER_REQUEST:
-            try:
-                result = request(client, *args, **kwargs)
-            except RateLimitError as exc:
-                client.logger.error('GitHub limit exceeded: [%s]' % exc)
-                client.limit.ask(session=client.session, force=True)
-                client.delay(SHORT_BREAK_DELAY * count)
-            except AbuseLimitError as exc:
-                client.logger.error('GitHub abuse limit violated: [%s]' % exc)
-                client.reset()
-                client.delay(LONG_BREAK_DELAY * count)
-            except GithubException as exc:
-                client.logger.error('GitHub responds error: [%s]' % exc)
-                if not isinstance(exc, (DataDecodeError, NotFoundError)):
-                    raise
-                client.delay(MEDIUM_BREAK_DELAY * count)
-            except (Timeout, ConnectionError) as exc:
-                client.logger.error(
-                    'Request timeout or connection error: [%s]' % exc)
-                client.reset()
-                client.delay(LONG_BREAK_DELAY * count)
-            else:
-                client.limit.use()
-                return result
+            if with_limit is True:
+                client = args[0]
+                client.ask_limit()
+                client.delay_limit()
 
-            client.logger.info('Retrying request (%s)...' % count)
-            count += 1
+            while count <= MAX_RETRIES_PER_REQUEST:
+                try:
+                    result = request(*args, **kwargs)
+                    if client is not None:
+                        client.use_limit()
+                    return result
 
-        raise MaxRetriesExceeded('Unable to make request.')
+                except Exception as exc:
+                    handle_exception(exc, delay_multiple=count, client=client)
+                    count += 1
 
-    return handler
-
-
-def reconnect(request):
-    def handler(*args, **kwargs):
-        count = 1
-        while count <= MAX_RETRIES_PER_REQUEST:
-            try:
-                return request(*args, **kwargs)
-            except GithubException as exc:
-                print('Response error: [%s]' % exc)
-                raise
-            except (Timeout, ConnectionError) as exc:
-                time.sleep(LONG_BREAK_DELAY * count)
-                print('Connection error: [%s]' % exc)
-                count += 1
-    return handler
+            raise MaxRetriesExceeded('Unable to make request')
+        return handler
+    return wrapper
 
 
 class GithubLimit:
@@ -97,7 +65,7 @@ class GithubLimit:
         else:
             self._delay = delay
 
-    @reconnect
+    @retry(with_limit=False)
     def ask(self, session, force=False):
         if force or self.stale():
             response = session.get(RATE_LIMIT_URL)

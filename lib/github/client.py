@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 
-import time
 from collections import deque
 from types import SimpleNamespace
 from requests import Session
 from urllib.parse import splitquery, parse_qsl, urljoin
 from . import _get_logger, get_endpoint
-from .limit import GithubLimit, github_limit, reconnect
+from .limit import GithubLimit, retry
 from .exceptions import parse_response
 
 __all__ = [
@@ -46,14 +45,18 @@ class GithubClient:
     def reset(self):
         self.session.close()
         self.__create()
-        self.limit.ask(self.session, force=True)
+        self.ask_limit(force=True)
 
-    def delay(self, seconds):
-        self.logger.info('Resume in %s second%s...'
-                         % (seconds, 's' if seconds > 1 else ''))
-        time.sleep(seconds)
+    def ask_limit(self, force=False):
+        self.limit.ask(self.session, force=force)
 
-    @github_limit
+    def use_limit(self):
+        self.limit.use()
+
+    def delay_limit(self):
+        self.limit.delay()
+
+    @retry(with_limit=True)
     def request(self, method=None, url=None, data=None, **kwargs):
         method = method or self.method
         url = url or self.url
@@ -176,7 +179,7 @@ class GithubContent(SimpleNamespace):
     def is_file(self):
         return self.type == 'file'
 
-    @reconnect
+    @retry(with_limit=False)
     def __download(self):
         if self.download_url is not None:
             with Session() as s:

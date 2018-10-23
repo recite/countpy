@@ -204,6 +204,7 @@ class ContentRetriever(GithubClient):
         yield from (GithubContent(**i) for i in data)
 
     def traverse(self, contents_url):
+        traversed = set()
         folders = deque(['.'])
         while True:
             try:
@@ -211,8 +212,10 @@ class ContentRetriever(GithubClient):
             except IndexError:
                 break
             else:
+                traversed.add(folder)
                 for item in self.retrieve(urljoin(contents_url, folder)):
                     if item.is_file():
                         yield item
                     else:
-                        folders.append(item.path)
+                        if item.path not in traversed:
+                            folders.append(item.path)

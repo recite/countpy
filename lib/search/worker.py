@@ -126,4 +126,5 @@ class SearchWorker(Thread):
             self._logger.info('  --> Finding packages...')
             repo.find_packages()
             self._logger.info('  --> Saving repository...')
+            repo.set_retrieved(True)
             repo.commit_changes()

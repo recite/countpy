@@ -203,6 +203,8 @@ class HashType:
                     mapping[field] = value
         if mapping:
             self.updated = self.mset(self.name, mapping)
+            if not self._existed:
+                self._existed = True
 
     def commit_changes(self):
         if self.has_changes():
@@ -284,7 +286,7 @@ class RepoFiles:
         return {pkgname.lower().strip(): version.strip() for pkgname, version in finder(content)}
 
     def local_packages(self):
-        return set(self.pkgname_from_path(path) for path, _ in self.pyfiles)
+        return set(self.pkgname_from_path(path) for path, _ in self.get_pyfiles())
 
     @classmethod
     def __struct_init(cls, other_struct):
@@ -305,7 +307,7 @@ class RepoFiles:
         self._files = self.__struct_init(files)
 
     def __iter__(self):
-        for file in self.pyfiles:
+        for file in self.get_pyfiles():
             yield file
         if self.reqfile:
             yield self.reqfile
@@ -332,9 +334,8 @@ class RepoFiles:
             return path in self._files[ftype]
         return False
 
-    @property
-    def pyfiles(self):
-        return [RepoFile(*i) for i in self._files[self._pyfile].items()]
+    def get_pyfiles(self):
+        yield from (RepoFile(*i) for i in self._files[self._pyfile].items())
 
     @property
     def reqfile(self):
@@ -501,7 +502,7 @@ class Repository(HashType):
         local_packages = self.files.local_packages()
 
         # Find packages in python modules
-        for path, content in self.files.pyfiles:
+        for path, content in self.files.get_pyfiles():
             packages = RepoFiles.parse_pyfile(content)
             for pkgname in packages - local_packages:
                 if pkgname:

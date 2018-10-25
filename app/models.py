@@ -9,6 +9,7 @@ Contains all the model objects and their schemas.
 import os
 import re
 import json
+from functools import partial
 from datetime import datetime
 from typing import Set, List, Dict, DefaultDict
 from collections import namedtuple, defaultdict
@@ -40,6 +41,11 @@ class HashType:
     _defaults = {}
 
     updated = ...  # type: datetime
+
+    @classmethod
+    def _get_default(cls, field):
+        value = cls._defaults.get(field)
+        return value() if callable(value) else value
 
     @classmethod
     def genkey(cls, name):
@@ -113,13 +119,13 @@ class HashType:
     @classmethod
     def use_val(cls, value, field):
         if field in cls._text_fields:
-            return value if _is_set(value) else cls._defaults.get(field)
+            return value if _is_set(value) else cls._get_default(field)
         elif field in cls._num_fields:
-            return int(value) if _is_set(value) else cls._defaults.get(field)
+            return int(value) if _is_set(value) else cls._get_default(field)
         elif field in cls._json_fields:
-            return json.loads(value) if _is_set(value) else cls._defaults.get(field)
+            return json.loads(value) if _is_set(value) else cls._get_default(field)
         elif field in cls._date_fields:
-            return datetime.utcfromtimestamp(float(value)) if _is_set(value) else cls._defaults.get(field)
+            return datetime.utcfromtimestamp(float(value)) if _is_set(value) else cls._get_default(field)
         raise NotImplementedError('Unsupported field "%s" with value "%s"' % (field, value))
 
     @classmethod
@@ -179,7 +185,7 @@ class HashType:
                 continue
             elif self.is_changed(field):
                 continue
-            setattr(self, field, value if _is_set(value) else self._defaults.get(field))
+            setattr(self, field, value if _is_set(value) else self._get_default(field))
 
     @property
     def storekey(self):
@@ -239,8 +245,7 @@ class RepoFiles:
 
     @staticmethod
     def is_pyfile(path):
-        fname = os.path.basename(path)
-        return fname.lower().endswith('.py')
+        return path.lower().endswith('.py')
 
     @staticmethod
     def is_reqfile(path):
@@ -249,11 +254,12 @@ class RepoFiles:
 
     @staticmethod
     def pkgname_from_path(path):
-        dir_, base = os.path.dirname(path), os.path.basename(path)
-        if dir_ in ('', '/'):
-            return base.rsplit('.', maxsplit=1)[0] if RepoFiles.is_pyfile(base) else base
+        dirs, base = os.path.dirname(path), os.path.basename(path)
+        if dirs in ('', '/'):
+            return os.path.splitext(base)[0] if RepoFiles.is_pyfile(base) else base
         else:
-            return RepoFiles.pkgname_from_path(dir_)
+            dirs = dirs.split(os.path.sep)
+            return dirs[0] or dirs[1]
 
     @classmethod
     def get_ftype(cls, path):
@@ -320,13 +326,15 @@ class RepoFiles:
 
     def __setitem__(self, path, content):
         ftype = self.get_ftype(path)
-        if ftype is not None:
-            content = self.retract_content(content, ftype)
-            if ftype == self._pyfile:
-                self._files[ftype][path] = content
-            elif ftype == self._reqfile:
-                self._files[ftype] = {path: content}
-        raise KeyError(path)
+        if ftype is None:
+            raise KeyError(path)
+        content = self.retract_content(content, ftype)
+        if ftype == self._pyfile:
+            self._files[ftype][path] = content
+        elif ftype == self._reqfile:
+            self._files[ftype] = {path: content}
+        else:
+            raise NotImplementedError
 
     def __contains__(self, path):
         ftype = self.get_ftype(path)
@@ -355,9 +363,9 @@ class Package(HashType):
         'num_pyfiles': 0,
         'num_reqfiles': 0,
         'num_repos': 0,
-        'repos': set(),
-        'reqfiles': dict(),
-        'pyfiles': defaultdict(set)
+        'repos': set,
+        'reqfiles': dict,
+        'pyfiles': partial(defaultdict, set)
     }
 
     num_repos = ...  # type: int
@@ -420,7 +428,7 @@ class Repository(HashType):
     _json_fields = ('files', 'packages')
 
     _defaults = {
-        'files': RepoFiles(),
+        'files': RepoFiles,
         'packages': [],
         'retrieved': False
     }
@@ -436,7 +444,7 @@ class Repository(HashType):
     def use_val(cls, value, field):
         value = super(Repository, cls).use_val(value, field)
         if field == 'files':
-            return RepoFiles(files=value)
+            return value if isinstance(value, RepoFiles) else RepoFiles(value)
         elif field == 'retrieved':
             return bool(value)
         else:
@@ -531,4 +539,4 @@ class Repository(HashType):
         self.set_change('packages')
 
     def query_packages(self):
-        return (Package(i) for i in self.packages)
+        yield from (Package(i) for i in self.packages)

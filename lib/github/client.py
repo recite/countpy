@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import re
 from collections import deque
 from types import SimpleNamespace
 from requests import Session
@@ -196,6 +197,17 @@ class GithubContent(SimpleNamespace):
 
 
 class ContentRetriever(GithubClient):
+    _excludes = re.compile(
+        r'(?:^|/)'
+        r'(venv|__pycache__|static|[Pp](?:ython|ip)(?:-?\d+(?:\.[0-9a-z]+)*)?)'
+        r'(?=/|$)'
+    )
+
+    @classmethod
+    def is_excluded(cls, path):
+        found = cls._excludes.findall(path)
+        return bool(found)
+
     def __init__(self, auth=None, timeout=None):
         super(ContentRetriever, self).__init__(auth=auth, timeout=timeout)
         self.method = 'GET'
@@ -219,6 +231,7 @@ class ContentRetriever(GithubClient):
                 for item in self.retrieve(urljoin(contents_url, folder)):
                     if item.is_file():
                         yield item
-                    else:
-                        if item.path not in traversed:
-                            folders.append(item.path)
+                    elif self.is_excluded(item.path):
+                        continue
+                    elif item.path not in traversed:
+                        folders.append(item.path)

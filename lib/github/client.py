@@ -7,7 +7,7 @@ from requests import Session
 from urllib.parse import splitquery, parse_qsl, urljoin
 from . import _get_logger, get_endpoint
 from .limit import GithubLimit, retry
-from .exceptions import parse_response
+from .exceptions import parse_response, NotFoundError
 
 __all__ = [
     'GithubClient',
@@ -111,9 +111,13 @@ class Pagination(GithubClient):
 
     def request(self, url=None, **kwargs):
         self._prep_params(url, kwargs)
-        data, resp = super(Pagination, self).request(url=url, **kwargs)
-        self._parse_links(resp)
-        self._parse_data(data)
+        try:
+            data, resp = super(Pagination, self).request(url=url, **kwargs)
+        except NotFoundError:
+            pass
+        else:
+            self._parse_links(resp)
+            self._parse_data(data)
 
     def has_next(self):
         return 'next' in self._links
@@ -190,9 +194,12 @@ class GithubContent(SimpleNamespace):
 
     @property
     def content(self):
-        assert self.is_file(), 'Not a file.'
+        assert self.is_file(), 'Not a file'
         if not hasattr(self, '_content'):
-            self._content = self.__download()
+            try:
+                self._content = self.__download()
+            except NotFoundError:
+                return ''
         return self._content
 
 
@@ -228,7 +235,13 @@ class ContentRetriever(GithubClient):
                 break
             else:
                 traversed.add(folder)
-                for item in self.retrieve(urljoin(contents_url, folder)):
+
+                try:
+                    items = self.retrieve(urljoin(contents_url, folder))
+                except NotFoundError:
+                    continue
+
+                for item in items:
                     if item.is_file():
                         yield item
                     elif self.is_excluded(item.path):

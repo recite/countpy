@@ -79,8 +79,9 @@ class MaxRetriesExceeded(Exception):
 
 
 _logger = _get_logger('exceptions')
-_need_reask_errors = (RateLimitError,)
-_need_reset_errors = (Timeout, ConnectionError, AbuseLimitError)
+_need_reask = (RateLimitError,)
+_need_reset = (Timeout, ConnectionError, AbuseLimitError)
+_default_delay = (Timeout, ConnectionError)
 
 
 def handle_exception(exception, delay_multiple=1, client=None):
@@ -93,15 +94,15 @@ def handle_exception(exception, delay_multiple=1, client=None):
     seconds = None
     if hasattr(exception, 'delay'):
         seconds = exception.delay
-    elif isinstance(exception, (Timeout, ConnectionError)):
+    elif isinstance(exception, _default_delay):
         seconds = DEFAULT_BREAK_DELAY
 
     if seconds is not None:
         delay(seconds)
         if client is not None:
-            if isinstance(exception, _need_reask_errors):
+            if isinstance(exception, _need_reask):
                 client.ask_limit(force=True)
-            elif isinstance(exception, _need_reset_errors):
+            elif isinstance(exception, _need_reset):
                 client.reset()
         return
 

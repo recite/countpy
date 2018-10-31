@@ -74,7 +74,7 @@ class SearchWorker(Thread):
             if time_slice is None:
                 break
             self.search_repos_in_slice(time_slice)
-            self._slices.done(time_slice)
+            self._slices.task_done(time_slice)
 
     def search_repos_in_slice(self, time_slice):
         self._logger.info('Searching time slice: %s' % time_slice)

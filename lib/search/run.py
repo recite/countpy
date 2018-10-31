@@ -22,7 +22,7 @@ class SearchCode:
             _log_configurer()
         else:
             total = len(self.slices)
-            suffix = 'of %d searches completed' % total
+            suffix = 'of %d slices done' % total
             self._progress = ProgressBar(total, prefix='Searching', suffix=suffix)
 
         self._run_event = Event()
@@ -77,7 +77,7 @@ class SearchCode:
             self._progress.print()
             while not self.slices.is_completed() and self.is_running():
                 self.raise_worker_exceptions()
-                self._progress.print(self.slices.remain)
+                self._progress.print(self.slices.done)
                 time.sleep(.1)
 
     def wait_until_finish(self):

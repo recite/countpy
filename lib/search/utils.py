@@ -85,9 +85,9 @@ class ProgressBar:
 
     __print_fmt = '\r{prefix} |{bar}| {rate}% {suffix}'
 
-    def __init__(self, total, prefix='Progress:',
+    def __init__(self, total=None, prefix='Progress:',
                  suffix='Complete', decimals=1, length=50):
-        self.total = int(total)
+        self.total = int(total or 0)
         self.length = int(length)
         self.params = {'prefix': prefix, 'suffix': suffix}
         self.__rate_fmt = '{0:.%sf}' % decimals
@@ -102,25 +102,33 @@ class ProgressBar:
         if end == self.__end_char:
             self.__last_printed = True
 
-    def __gen_params(self, complete):
-        filled_length = int(self.length * complete // self.total)
+    def __gen_params(self, complete, total):
+        filled_length = int(self.length * complete // total)
         filled_chars = self.__filled_char * filled_length
 
         empty_length = self.length - filled_length
         empty_chars = self.__empty_char * empty_length
 
-        rate = self.__rate_fmt.format(complete / float(self.total) * 100)
+        rate = self.__rate_fmt.format(complete / float(total) * 100)
         bar = '{}{}'.format(filled_chars, empty_chars)
         return dict(bar=bar, rate=rate, **self.params)
 
-    def print(self, complete=0):
-        end = self.__end_char if complete == self.total else None
-        params = self.__gen_params(complete)
+    def print(self, complete=0, total=None, **kwargs):
+        total = total or self.total
+        end = self.__end_char if complete == total else None
+        params = self.__gen_params(complete, total)
+        params.update(kwargs)
         self.__print_bar(end, **params)
 
     def end(self):
         if self.__printed and not self.__last_printed:
             print()
+
+    def set_prefix(self, text):
+        self.params['prefix'] = str(text)
+
+    def set_suffix(self, text):
+        self.params['suffix'] = str(text)
 
 
 class TaskCounter:

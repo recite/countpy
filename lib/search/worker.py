@@ -20,19 +20,19 @@ class SearchWorker(Thread):
 
     _repo_fmt = '* {label} repository: {full_name} ({id}) - {url}'
 
-    def __init__(self, user, passwd, slices, event, mode=None):
+    def __init__(self, user, passwd, slices, repos, event):
         super(SearchWorker, self).__init__(name=user)
         self._logger = _get_logger(self.__class__.__name__)
         self._slices = slices
+        self._repos = repos
         self._event = event
         self._exception = None
         self._search = None
         self._retriever = None
 
-        mode = mode or 'both'
         auth = (user, passwd) if user else None
 
-        if mode == 'both' or mode == 'search-only':
+        if self._slices is not None:
             self._search = SearchRepositories(
                 keyword=self._keyword,
                 qualifiers=self._qualifiers,
@@ -43,7 +43,7 @@ class SearchWorker(Thread):
                 timeout=self._timeout
             )
 
-        if mode == 'both' or mode == 'retrieve-only':
+        if self._repos is not None:
             self._retriever = ContentRetriever(auth=auth)
 
     def get_exception(self):
@@ -66,15 +66,13 @@ class SearchWorker(Thread):
         self._logger.info('Search worker (%s) is stopped.' % self.name)
 
     def search_repos(self):
-        if self._search is None:
-            return
-
-        while self._event.is_set():
-            time_slice = self._slices.get()
-            if time_slice is None:
-                break
-            self.search_repos_in_slice(time_slice)
-            self._slices.task_done(time_slice)
+        if self._search is not None:
+            while self._event.is_set():
+                time_slice = self._slices.get()
+                if time_slice is None:
+                    break
+                self.search_repos_in_slice(time_slice)
+                self._slices.task_done(time_slice)
 
     def search_repos_in_slice(self, time_slice):
         self._logger.info('Searching time slice: %s' % time_slice)
@@ -93,38 +91,48 @@ class SearchWorker(Thread):
             newrepo.set_contents_url(repo.contents_url)
             newrepo.commit_changes()
 
-    def retrieve_files(self):
-        if self._retriever is None:
+    def retrieve_files_in_repo(self, repo_name):
+        repo = Repository(repo_name)
+
+        # Skip if repository was done already
+        if repo.retrieved:
+            self._logger.info(self._repo_fmt.format(
+                label='Already done:', full_name=repo.name,
+                id=repo.id, url=repo.url))
             return
 
-        self._logger.info('Retrieving contents for all repositories in DB...')
-        time.sleep(1)
-
-        for repo in Repository.query_all():
-            assert self.is_running()
-            if repo.retrieved:
-                self._logger.info(
-                    self._repo_fmt.format(
-                        label='Already done', full_name=repo.name,
-                        id=repo.id, url=repo.url))
-                continue
-
+        # Skip if repository has no contents URL
+        if not repo.contents_url:
             self._logger.info(self._repo_fmt.format(
-                label='Retrieving', full_name=repo.name, id=repo.id, url=repo.url))
+                label='No contents URL found:', full_name=repo.name,
+                id=repo.id, url=repo.url))
+            return
 
-            if not repo.contents_url:
-                self._logger.info('  --> No contents URL.')
+        # Do retrieving contents from GitHub
+        self._logger.info(self._repo_fmt.format(
+            label='Retrieving:', full_name=repo.name, id=repo.id, url=repo.url))
+        for file in self._retriever.traverse(repo.contents_url):
+            assert self.is_running()
+            if not Repository.expects_file(file.path):
+                self._logger.info('  (-) %s' % file.path)
                 continue
+            self._logger.info('  (+) %s' % file.path)
+            repo.add_file(file.path, file.content)
 
-            for file in self._retriever.traverse(repo.contents_url):
-                if not Repository.expects_file(file.path):
-                    self._logger.info('  (-) %s' % file.path)
-                    continue
-                self._logger.info('  (+) %s' % file.path)
-                repo.add_file(file.path, file.content)
+        # Find packages and save repository
+        self._logger.info('  --> Finding packages...')
+        repo.find_packages()
+        self._logger.info('  --> Saving repository...')
+        repo.set_retrieved(True)
+        repo.commit_changes()
 
-            self._logger.info('  --> Finding packages...')
-            repo.find_packages()
-            self._logger.info('  --> Saving repository...')
-            repo.set_retrieved(True)
-            repo.commit_changes()
+    def retrieve_files(self):
+        if self._retriever is not None:
+            self._logger.info('Retrieving repositories\'s contents...')
+            time.sleep(1)
+            while self._event.is_set():
+                repo_name = self._repos.get()
+                if repo_name is None:
+                    break
+                self.retrieve_files_in_repo(repo_name)
+                self._repos.task_done()

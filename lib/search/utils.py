@@ -160,6 +160,12 @@ class TaskCounter:
         with self._lock:
             return self._done
 
+    @property
+    def total(self):
+        assert self.isset()
+        with self._lock:
+            return self._total
+
     def isset(self):
         return self._total is not None
 

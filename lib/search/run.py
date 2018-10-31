@@ -3,8 +3,9 @@
 import time
 from threading import Event
 from . import config, _log_configurer
-from .utils import TimeSlices, ProgressBar
+from .utils import TaskCounter, TimeSlices, ProgressBar
 from .worker import SearchWorker
+from app.models import Repository
 
 __all__ = ['SearchCode']
 
@@ -12,36 +13,47 @@ __all__ = ['SearchCode']
 class SearchCode:
     def __init__(self, resume=True, search_order=None,
                  verbose=False, mode=None, anonymous=False, threads=None):
-        reverse = None
-        if search_order is not None:
-            reverse = search_order.lower() == 'desc'
-        self.slices = TimeSlices(resume=resume, reverse=reverse)
+        self.slices = None
+        self.repos = None
+        self._run_event = Event()
 
+        # Prepare search time slices
+        mode = mode or 'both'
+        if mode == 'both' or mode == 'search-only':
+            reverse = None
+            if search_order is not None:
+                reverse = search_order.lower() == 'desc'
+            self.slices = TimeSlices(resume=resume, reverse=reverse)
+
+        # Query all local repositories
+        if mode == 'both' or mode == 'retrieve-only':
+            self.repos = TaskCounter(tasks=Repository.query_all(name_only=True, lazy=False))
+
+        # Verbose or show progress
         if verbose:
             self._progress = None
             _log_configurer()
         else:
-            total = len(self.slices)
-            suffix = 'of %d slices done' % total
-            self._progress = ProgressBar(total, prefix='Searching', suffix=suffix)
+            self._progress = ProgressBar()
 
-        self._run_event = Event()
-
+        # Anonymous or authentic
         if anonymous:
             threads = int(threads) if threads else 1
             auths = [(None, None)] * threads
         else:
             auths = config.items('credentials')
 
+        # Init search workers
         self.workers = [
-            SearchWorker(user, passwd, self.slices, self._run_event, mode)
+            SearchWorker(user, passwd, self.slices, self.repos, self._run_event)
             for user, passwd in auths
         ]
 
-        assert self.workers, 'No Github credential found.'
+        # Make sure workers are loaded successfully
+        assert self.workers, 'No Github credential found'
 
     def run(self):
-        assert self.workers, 'No worker to run.'
+        assert self.workers, 'No worker to run'
         for worker in self.workers:
             worker.start()
         self._run_event.set()
@@ -73,12 +85,20 @@ class SearchCode:
                 raise exc
 
     def show_progress(self):
-        if self._progress is not None:
-            self._progress.print()
-            while not self.slices.is_completed() and self.is_running():
+        def _show(haystack, prefix, suffix):
+            self._progress.set_prefix(prefix)
+            self._progress.set_suffix('of %s %s' % (haystack.total, suffix))
+            while not haystack.is_completed() and self.is_running():
+                done, total = haystack.status()
+                self._progress.print(done, total)
                 self.raise_worker_exceptions()
-                self._progress.print(self.slices.done)
                 time.sleep(.1)
+
+        if self._progress is not None:
+            if self.slices is not None:
+                _show(self.slices, 'Search repositories:', 'time slices')
+            if self.repos is not None:
+                _show(self.repos, 'Retrieve contents  :', 'repositories')
 
     def wait_until_finish(self):
         if self.is_running():

@@ -61,6 +61,7 @@ class SearchWorker(Thread):
         except AssertionError:
             pass
         except Exception as exc:
+            self._logger.exception(exc_info=exc)
             self._exception = exc
             raise
         self._logger.info('Search worker (%s) is stopped.' % self.name)

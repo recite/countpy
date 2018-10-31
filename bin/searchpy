@@ -7,13 +7,17 @@ import sys
 import signal
 from argparse import ArgumentParser
 
-_MAIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_MAIN_DIR = os.path.dirname(_MODULE_DIR)
 sys.path.append(_MAIN_DIR)
 
 from lib.search import SearchCode
 
+LOG_FILENAME = 'searchpy.log'
+
 
 def get_args():
+    # Setup arguments
     parser = ArgumentParser()
 
     parser.add_argument('--no-resume', action='store_true', default=False,
@@ -40,21 +44,30 @@ def get_args():
                         help='Number of threads running, used only if '
                              '"--anonymous" exists (default is 1).')
 
+    parser.add_argument('--log-to-file', action='store_true', default=False,
+                        help='Write running progress into "searchpy.log"')
+
+    # Parse arguments
     args = parser.parse_args()
 
+    # Detect running mode
     if args.search_only and args.retrieve_only:
         parser.error('Using "--search-only" and "--retrieve-only" in one '
                      'command is not allowed.')
-
     elif args.search_only:
         args.mode = 'search-only'
-
     elif args.retrieve_only:
         args.mode = 'retrieve-only'
-
     else:
         args.mode = None
 
+    # Whether to log progress into file
+    if args.log_to_file:
+        args.logfile = os.path.join(_MODULE_DIR, LOG_FILENAME)
+    else:
+        args.logfile = None
+
+    # Return input arguments
     return args
 
 
@@ -64,12 +77,14 @@ def main():
 
     signal.signal(signal.SIGTERM, exit_handler)
     args = get_args()
+
     search = SearchCode(
         resume=not args.no_resume,
         verbose=args.verbose,
         mode=args.mode,
         anonymous=args.anonymous,
-        threads=args.threads
+        threads=args.threads,
+        logfile=args.logfile
     )
     search.run()
 

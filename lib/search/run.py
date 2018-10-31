@@ -11,8 +11,8 @@ __all__ = ['SearchCode']
 
 
 class SearchCode:
-    def __init__(self, resume=True, search_order=None,
-                 verbose=False, mode=None, anonymous=False, threads=None):
+    def __init__(self, resume=True, search_order=None, verbose=False,
+                 mode=None, anonymous=False, threads=None, logfile=None):
         self.slices = None
         self.repos = None
         self._run_event = Event()
@@ -27,14 +27,12 @@ class SearchCode:
 
         # Query all local repositories
         if mode == 'both' or mode == 'retrieve-only':
-            self.repos = TaskCounter(tasks=Repository.query_all(name_only=True, lazy=False))
+            self.repos = TaskCounter(
+                tasks=Repository.query_all(name_only=True, lazy=False))
 
         # Verbose or show progress
-        if verbose:
-            self._progress = None
-            _log_configurer()
-        else:
-            self._progress = ProgressBar()
+        _log_configurer(verbose, logfile)
+        self._progress = None if verbose else ProgressBar()
 
         # Anonymous or authentic
         if anonymous:
@@ -42,15 +40,13 @@ class SearchCode:
             auths = [(None, None)] * threads
         else:
             auths = config.items('credentials')
+            assert auths, 'No Github credential found'
 
         # Init search workers
         self.workers = [
             SearchWorker(user, passwd, self.slices, self.repos, self._run_event)
             for user, passwd in auths
         ]
-
-        # Make sure workers are loaded successfully
-        assert self.workers, 'No Github credential found'
 
     def run(self):
         assert self.workers, 'No worker to run'

@@ -206,7 +206,8 @@ class GithubContent(SimpleNamespace):
 class ContentRetriever(GithubClient):
     _excludes = re.compile(
         r'(?:^|/)'
-        r'(venv|__pycache__|static|[Pp](?:ython|ip)(?:-?\d+(?:\.[0-9a-z]+)*)?)'
+        r'(\w*venv|site-packages|__pycache__|static'
+        r'|[Pp](?:ython|ip)(?:-?\d+(?:\.[0-9a-z]+)*)?)'
         r'(?=/|$)'
     )
 

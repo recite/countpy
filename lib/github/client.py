@@ -221,10 +221,14 @@ class ContentRetriever(GithubClient):
         self.method = 'GET'
 
     def retrieve(self, url):
-        data, _ = self.request(url=url)
-        if not isinstance(data, list):
-            data = [data]
-        yield from (GithubContent(**i) for i in data)
+        try:
+            data, _ = self.request(url=url)
+        except NotFoundError:
+            pass
+        else:
+            if not isinstance(data, list):
+                data = [data]
+            yield from (GithubContent(**i) for i in data)
 
     def traverse(self, contents_url):
         traversed = set()
@@ -236,13 +240,7 @@ class ContentRetriever(GithubClient):
                 break
             else:
                 traversed.add(folder)
-
-                try:
-                    items = self.retrieve(urljoin(contents_url, folder))
-                except NotFoundError:
-                    continue
-
-                for item in items:
+                for item in self.retrieve(urljoin(contents_url, folder)):
                     if item.is_file():
                         yield item
                     elif self.is_excluded(item.path):

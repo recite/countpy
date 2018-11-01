@@ -75,6 +75,17 @@ class SearchWorker(Thread):
                 self.search_repos_in_slice(time_slice)
                 self._slices.task_done(time_slice)
 
+    def retrieve_files(self):
+        if self._retriever is not None:
+            self._logger.info('Retrieving repositories\'s contents...')
+            time.sleep(1)
+            while self._event.is_set():
+                repo_name = self._repos.get()
+                if repo_name is None:
+                    break
+                self.retrieve_files_in_repo(repo_name)
+                self._repos.task_done()
+
     def search_repos_in_slice(self, time_slice):
         self._logger.info('Searching time slice: %s' % time_slice)
         self._search.search(created=time_slice)
@@ -135,14 +146,3 @@ class SearchWorker(Thread):
         self._logger.info('  --> Saving repository...')
         repo.set_retrieved(True)
         repo.commit_changes()
-
-    def retrieve_files(self):
-        if self._retriever is not None:
-            self._logger.info('Retrieving repositories\'s contents...')
-            time.sleep(1)
-            while self._event.is_set():
-                repo_name = self._repos.get()
-                if repo_name is None:
-                    break
-                self.retrieve_files_in_repo(repo_name)
-                self._repos.task_done()

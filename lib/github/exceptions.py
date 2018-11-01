@@ -49,7 +49,7 @@ class DataDecodeError(Exception):
 
 
 class NotFoundError(GithubException):
-    delay = MEDIUM_BREAK_DELAY
+    pass
 
 
 class LoginError(GithubException):

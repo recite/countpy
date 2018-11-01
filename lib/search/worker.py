@@ -112,6 +112,8 @@ class SearchWorker(Thread):
         # Do retrieving contents from GitHub
         self._logger.info(self._repo_fmt.format(
             label='Retrieving:', full_name=repo.name, id=repo.id, url=repo.url))
+
+        added = False
         for file in self._retriever.traverse(repo.contents_url):
             assert self.is_running()
             if not Repository.expects_file(file.path):
@@ -119,6 +121,13 @@ class SearchWorker(Thread):
                 continue
             self._logger.info('  (+) %s' % file.path)
             repo.add_file(file.path, file.content)
+            if not added:
+                added = True
+
+        # Return if no file found
+        if not added:
+            self._logger.info('  --> No expected files found.')
+            return
 
         # Find packages and save repository
         self._logger.info('  --> Finding packages...')

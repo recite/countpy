@@ -117,16 +117,16 @@ def parse_response(response, json=True):
         cls = DataDecodeError
         data = response.text
     else:
-        if response.status_code is codes.OK:
+        if response.status_code == codes.OK:
             return data, response
 
         cls = GithubException
         message = data.get('message', '').lower()
 
-        if response.status_code is codes.UNAUTHORIZED:
+        if response.status_code == codes.UNAUTHORIZED:
             cls = LoginError
 
-        elif response.status_code is codes.FORBIDDEN:
+        elif response.status_code == codes.FORBIDDEN:
             if 'invalid user-agent' in message:
                 cls = UserAgentError
             elif 'rate limit exceeded' in message:
@@ -134,7 +134,7 @@ def parse_response(response, json=True):
             elif 'abuse' in message:
                 cls = AbuseLimitError
 
-        elif response.status_code is codes.NOT_FOUND:
+        elif response.status_code == codes.NOT_FOUND:
             cls = NotFoundError
 
         elif response.status_code in (codes.SERVER_ERROR, codes.BAD_GATEWAY):

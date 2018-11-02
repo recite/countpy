@@ -18,6 +18,7 @@ __all__ = [
     'LoginError',
     'NotFoundError',
     'BadRequestError',
+    'ServiceUnavailableError',
     'UserAgentError',
     'RateLimitError',
     'AbuseLimitError',
@@ -26,23 +27,24 @@ __all__ = [
     'handle_exception'
 ]
 
-SHORT_BREAK_DELAY = 2
-MEDIUM_BREAK_DELAY = 5
-LONG_BREAK_DELAY = 10
-DEFAULT_BREAK_DELAY = LONG_BREAK_DELAY
+SHORT_BREAK_DELAY = 5
+MEDIUM_BREAK_DELAY = 15
+LONG_BREAK_DELAY = 60
+DEFAULT_BREAK_DELAY = MEDIUM_BREAK_DELAY
 
 
 class GithubException(Exception):
     delay = None
-    prefix = 'GitHub responds error: '
+    prefix = ''
 
     def __init__(self, status, data):
         super(GithubException, self).__init__()
+        self.name = self.__class__.__name__
         self.status = status
         self.data = data
 
     def __str__(self):
-        return '%s%s %s' % (self.prefix, self.status, self.data)
+        return '%s: %s %s' % (self.prefix or self.name, self.status, self.data)
 
 
 class DataDecodeError(Exception):
@@ -57,6 +59,10 @@ class BadRequestError(GithubException):
     pass
 
 
+class ServiceUnavailableError(GithubException):
+    delay = LONG_BREAK_DELAY
+
+
 class LoginError(GithubException):
     pass
 
@@ -67,12 +73,12 @@ class UserAgentError(GithubException):
 
 class RateLimitError(GithubException):
     delay = SHORT_BREAK_DELAY
-    prefix = 'GitHub limit exceeded: '
+    prefix = 'GitHub limit exceeded'
 
 
 class AbuseLimitError(GithubException):
     delay = LONG_BREAK_DELAY
-    prefix = 'GitHub abuse limit violated: '
+    prefix = 'GitHub abuse limit violated'
 
 
 class GithubServerError(GithubException):
@@ -94,7 +100,7 @@ def handle_exception(exception, delay_multiple=1, client=None):
         _logger.info('Resume in %s second%s...' % (s, 's' if s > 1 else ''))
         time.sleep(s * delay_multiple)
 
-    _logger.error('%s: %s' % (exception.__class__.__name__, exception))
+    _logger.error(exception)
 
     seconds = None
     if hasattr(exception, 'delay'):
@@ -154,6 +160,9 @@ def parse_response(response, json=True):
 
     elif response.status_code == codes.BAD_REQUEST:
         cls = BadRequestError
+
+    elif response.status_code == codes.SERVICE_UNAVAILABLE:
+        cls = ServiceUnavailableError
 
     elif response.status_code in (codes.SERVER_ERROR, codes.BAD_GATEWAY):
         cls = GithubServerError

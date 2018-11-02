@@ -5,7 +5,8 @@ from threading import Thread
 from app.models import Repository
 from lib.github.endpoints import SearchRepositories
 from lib.github.client import ContentRetriever
-from . import config, _get_logger
+from lib.logger import get_logger
+from . import config
 
 __all__ = ['SearchWorker']
 
@@ -22,7 +23,7 @@ class SearchWorker(Thread):
 
     def __init__(self, user, passwd, slices, repos, event):
         super(SearchWorker, self).__init__(name=user)
-        self._logger = _get_logger(self.__class__.__name__)
+        self._logger = get_logger(__package__)
         self._slices = slices
         self._repos = repos
         self._event = event

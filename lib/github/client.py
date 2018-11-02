@@ -5,7 +5,8 @@ from collections import deque
 from types import SimpleNamespace
 from requests import Session
 from urllib.parse import splitquery, parse_qsl, urljoin
-from . import _get_logger, get_endpoint
+from lib.logger import get_logger
+from . import get_endpoint
 from .limit import GithubLimit, retry
 from .exceptions import parse_response, NotFoundError
 
@@ -34,7 +35,7 @@ class GithubClient:
         self.timeout = timeout or DEFAULT_REQUEST_TIMEOUT
         self.auth = auth
         self.limit = GithubLimit(endpoint)
-        self.logger = _get_logger(self.__class__.__name__)
+        self.logger = get_logger(__package__)
         self.__create()
 
     def __create(self):

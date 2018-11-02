@@ -2,7 +2,8 @@
 
 import time
 from threading import Event
-from . import config, _log_configurer
+from lib.logger import log_configurer
+from . import config
 from .utils import TaskCounter, TimeSlices, ProgressBar
 from .worker import SearchWorker
 from app.models import Repository
@@ -31,7 +32,7 @@ class SearchCode:
                 tasks=Repository.query_all(name_only=True, lazy=False))
 
         # Verbose or show progress
-        _log_configurer(verbose, logfile)
+        log_configurer(verbose, logfile)
         self._progress = None if verbose else ProgressBar()
 
         # Anonymous or authentic

@@ -1,1 +1,1 @@
-__all__ = ['github', 'search']
+__all__ = ['github', 'search', 'logger']

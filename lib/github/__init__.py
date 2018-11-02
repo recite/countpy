@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import logging
 from enum import Enum
 from urllib.parse import urljoin
 
@@ -24,7 +23,3 @@ def get_endpoint(name):
         except KeyError:
             pass
     return None, None
-
-
-def _get_logger(name):
-    return logging.getLogger('%s.%s' % (__package__, name))

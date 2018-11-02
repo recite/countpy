@@ -10,7 +10,7 @@ import time
 from requests import Response, codes
 from requests.exceptions import Timeout, ConnectionError
 from json.decoder import JSONDecodeError
-from . import _get_logger
+from lib.logger import get_logger
 
 __all__ = [
     'GithubException',
@@ -78,7 +78,7 @@ class MaxRetriesExceeded(Exception):
     pass
 
 
-_logger = _get_logger('exceptions')
+_logger = get_logger(__package__)
 _need_reask = (RateLimitError,)
 _need_reset = (Timeout, ConnectionError, AbuseLimitError)
 _default_delay = (Timeout, ConnectionError)

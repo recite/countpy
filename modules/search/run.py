@@ -2,7 +2,7 @@
 
 import time
 from threading import Event
-from lib.logger import log_configurer
+from modules.logger import log_configurer
 from . import config
 from .utils import TaskCounter, TimeSlices, ProgressBar
 from .worker import SearchWorker

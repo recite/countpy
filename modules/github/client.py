@@ -5,7 +5,7 @@ from collections import deque
 from types import SimpleNamespace
 from requests import Session
 from urllib.parse import splitquery, parse_qsl, urljoin
-from lib.logger import get_logger
+from modules.logger import get_logger
 from . import get_endpoint
 from .limit import GithubLimit, retry
 from .exceptions import parse_response, NotFoundError, BadRequestError

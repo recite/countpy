@@ -10,7 +10,7 @@ import time
 from requests import Response, codes
 from requests.exceptions import Timeout, ConnectionError
 from json.decoder import JSONDecodeError
-from lib.logger import get_logger
+from modules.logger import get_logger
 
 __all__ = [
     'GithubException',

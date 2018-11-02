@@ -11,7 +11,7 @@ _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _MAIN_DIR = os.path.dirname(_MODULE_DIR)
 sys.path.append(_MAIN_DIR)
 
-from lib.search import SearchCode
+from modules.search import SearchCode
 
 LOG_FILENAME = 'searchpy.log'
 

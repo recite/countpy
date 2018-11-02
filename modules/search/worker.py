@@ -3,9 +3,9 @@
 import time
 from threading import Thread
 from app.models import Repository
-from lib.github.endpoints import SearchRepositories
-from lib.github.client import ContentRetriever
-from lib.logger import get_logger
+from modules.github.endpoints import SearchRepositories
+from modules.github.client import ContentRetriever
+from modules.logger import get_logger
 from . import config
 
 __all__ = ['SearchWorker']

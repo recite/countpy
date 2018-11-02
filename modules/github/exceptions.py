@@ -116,20 +116,29 @@ def handle_exception(exception, delay_multiple=1, client=None):
 
 def parse_response(response, json=True):
     assert isinstance(response, Response), 'Invalid response object.'
+
+    # Default exception
     cls = GithubException
 
+    # Parse data in response
     try:
         data = response.json() if json else response.text
-        message = data.get('message', '').lower()
     except JSONDecodeError:
         cls = DataDecodeError
         data = response.text
-        message = data.lower()
 
+    # Return parsed data and response object if success
     if response.status_code == codes.OK:
         return data, response
 
-    elif response.status_code == codes.UNAUTHORIZED:
+    # Parse GitHub error message
+    try:
+        message = data.get('message', '').lower()
+    except AttributeError:
+        message = data.lower()
+
+    # Identify exception
+    if response.status_code == codes.UNAUTHORIZED:
         cls = LoginError
 
     elif response.status_code == codes.FORBIDDEN:
@@ -149,4 +158,5 @@ def parse_response(response, json=True):
     elif response.status_code in (codes.SERVER_ERROR, codes.BAD_GATEWAY):
         cls = GithubServerError
 
+    # Raise exception
     raise cls(response.status_code, data)

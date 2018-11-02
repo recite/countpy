@@ -132,7 +132,7 @@ class SearchWorker(Thread):
                 self._logger.info('  (-) %s' % file.path)
                 continue
             self._logger.info('  (+) %s' % file.path)
-            repo.add_file(file.path, file.content)
+            repo.add_file(file.path, file.decoded_content)
             if not added:
                 added = True
 

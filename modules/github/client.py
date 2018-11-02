@@ -4,6 +4,7 @@ import re
 from collections import deque
 from types import SimpleNamespace
 from requests import Session
+from base64 import b64decode
 from urllib.parse import splitquery, parse_qsl, urljoin
 from modules.logger import get_logger
 from . import get_endpoint
@@ -185,23 +186,12 @@ class GithubContent(SimpleNamespace):
     def is_file(self):
         return self.type == 'file'
 
-    @retry(with_limit=False)
-    def __download(self):
-        if self.download_url is not None:
-            with Session() as s:
-                resp = s.get(self.download_url)
-            data, _ = parse_response(resp, json=False)
-            return data
-
     @property
-    def content(self):
+    def decoded_content(self):
         assert self.is_file(), 'Not a file'
-        if not hasattr(self, '_content'):
-            try:
-                self._content = self.__download()
-            except (NotFoundError, BadRequestError):
-                return ''
-        return self._content
+        if hasattr(self, 'content'):
+            return b64decode(self.content).decode()
+        return ''
 
 
 class ContentRetriever(GithubClient):
@@ -221,15 +211,23 @@ class ContentRetriever(GithubClient):
         super(ContentRetriever, self).__init__(auth=auth, timeout=timeout)
         self.method = 'GET'
 
-    def retrieve(self, url):
+    def __retrieve(self, url):
         try:
             data, _ = self.request(url=url)
         except (NotFoundError, BadRequestError):
-            pass
-        else:
-            if not isinstance(data, list):
-                data = [data]
-            yield from (GithubContent(**i) for i in data)
+            return []
+        return data if isinstance(data, list) else [data]
+
+    def retrieve(self, url):
+        for item in (GithubContent(**i) for i in self.__retrieve(url)):
+            if item.is_file():
+                data = self.__retrieve(item.url)
+                if data:
+                    data = data[0]
+                    for attr in ('content', 'encoding'):
+                        if attr in data:
+                            setattr(item, attr, data[attr])
+            yield item
 
     def traverse(self, contents_url):
         traversed = set()

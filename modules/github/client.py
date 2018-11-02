@@ -219,15 +219,17 @@ class ContentRetriever(GithubClient):
         return data if isinstance(data, list) else [data]
 
     def retrieve(self, url):
-        for item in (GithubContent(**i) for i in self.__retrieve(url)):
-            if item.is_file():
-                data = self.__retrieve(item.url)
-                if data:
-                    data = data[0]
-                    for attr in ('content', 'encoding'):
-                        if attr in data:
-                            setattr(item, attr, data[attr])
-            yield item
+        yield from (GithubContent(**i) for i in self.__retrieve(url))
+
+    def retrieve_content(self, item):
+        assert isinstance(item, GithubContent), 'Expected <GithubContent> item'
+        if item.is_file():
+            data = self.__retrieve(item.url)
+            if data:
+                data = data[0]
+                for attr in ('content', 'encoding'):
+                    if attr in data:
+                        setattr(item, attr, data[attr])
 
     def traverse(self, contents_url):
         traversed = set()

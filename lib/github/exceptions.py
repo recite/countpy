@@ -17,6 +17,7 @@ __all__ = [
     'DataDecodeError',
     'LoginError',
     'NotFoundError',
+    'BadRequestError',
     'UserAgentError',
     'RateLimitError',
     'AbuseLimitError',
@@ -49,6 +50,10 @@ class DataDecodeError(Exception):
 
 
 class NotFoundError(GithubException):
+    pass
+
+
+class BadRequestError(GithubException):
     pass
 
 
@@ -89,7 +94,7 @@ def handle_exception(exception, delay_multiple=1, client=None):
         _logger.info('Resume in %s second%s...' % (s, 's' if s > 1 else ''))
         time.sleep(s * delay_multiple)
 
-    _logger.error(exception)
+    _logger.error('%s: %s' % (exception.__class__.__name__, exception))
 
     seconds = None
     if hasattr(exception, 'delay'):
@@ -111,33 +116,37 @@ def handle_exception(exception, delay_multiple=1, client=None):
 
 def parse_response(response, json=True):
     assert isinstance(response, Response), 'Invalid response object.'
+    cls = GithubException
+
     try:
         data = response.json() if json else response.text
+        message = data.get('message', '').lower()
     except JSONDecodeError:
         cls = DataDecodeError
         data = response.text
-    else:
-        if response.status_code == codes.OK:
-            return data, response
+        message = data.lower()
 
-        cls = GithubException
-        message = data.get('message', '').lower()
+    if response.status_code == codes.OK:
+        return data, response
 
-        if response.status_code == codes.UNAUTHORIZED:
-            cls = LoginError
+    elif response.status_code == codes.UNAUTHORIZED:
+        cls = LoginError
 
-        elif response.status_code == codes.FORBIDDEN:
-            if 'invalid user-agent' in message:
-                cls = UserAgentError
-            elif 'rate limit exceeded' in message:
-                cls = RateLimitError
-            elif 'abuse' in message:
-                cls = AbuseLimitError
+    elif response.status_code == codes.FORBIDDEN:
+        if 'invalid user-agent' in message:
+            cls = UserAgentError
+        elif 'rate limit exceeded' in message:
+            cls = RateLimitError
+        elif 'abuse' in message:
+            cls = AbuseLimitError
 
-        elif response.status_code == codes.NOT_FOUND:
-            cls = NotFoundError
+    elif response.status_code == codes.NOT_FOUND:
+        cls = NotFoundError
 
-        elif response.status_code in (codes.SERVER_ERROR, codes.BAD_GATEWAY):
-            cls = GithubServerError
+    elif response.status_code == codes.BAD_REQUEST:
+        cls = BadRequestError
+
+    elif response.status_code in (codes.SERVER_ERROR, codes.BAD_GATEWAY):
+        cls = GithubServerError
 
     raise cls(response.status_code, data)

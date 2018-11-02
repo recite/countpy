@@ -8,7 +8,7 @@ from urllib.parse import splitquery, parse_qsl, urljoin
 from lib.logger import get_logger
 from . import get_endpoint
 from .limit import GithubLimit, retry
-from .exceptions import parse_response, NotFoundError
+from .exceptions import parse_response, NotFoundError, BadRequestError
 
 __all__ = [
     'GithubClient',
@@ -114,7 +114,7 @@ class Pagination(GithubClient):
         self._prep_params(url, kwargs)
         try:
             data, resp = super(Pagination, self).request(url=url, **kwargs)
-        except NotFoundError:
+        except (NotFoundError, BadRequestError):
             pass
         else:
             self._parse_links(resp)
@@ -199,7 +199,7 @@ class GithubContent(SimpleNamespace):
         if not hasattr(self, '_content'):
             try:
                 self._content = self.__download()
-            except NotFoundError:
+            except (NotFoundError, BadRequestError):
                 return ''
         return self._content
 
@@ -224,7 +224,7 @@ class ContentRetriever(GithubClient):
     def retrieve(self, url):
         try:
             data, _ = self.request(url=url)
-        except NotFoundError:
+        except (NotFoundError, BadRequestError):
             pass
         else:
             if not isinstance(data, list):

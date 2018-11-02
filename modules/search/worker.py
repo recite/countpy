@@ -137,14 +137,16 @@ class SearchWorker(Thread):
             if not added:
                 added = True
 
-        # Return if no file found
-        if not added:
-            self._logger.info('  --> No expected files found.')
-            return
+        # Find packages if files found
+        if added:
+            self._logger.info('  --> Finding packages...')
+            repo.find_packages()
 
-        # Find packages and save repository
-        self._logger.info('  --> Finding packages...')
-        repo.find_packages()
+        # Do nothing if no file found
+        else:
+            self._logger.info('  --> No expected files found.')
+
+        # Save repository
         self._logger.info('  --> Saving repository...')
         repo.set_retrieved(True)
         repo.commit_changes()

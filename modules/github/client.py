@@ -2,6 +2,7 @@
 
 import re
 from collections import deque
+from operator import itemgetter
 from types import SimpleNamespace
 from requests import Session
 from base64 import b64decode
@@ -9,7 +10,8 @@ from urllib.parse import splitquery, parse_qsl, urljoin
 from modules.logger import get_logger
 from . import get_endpoint
 from .limit import GithubLimit, retry
-from .exceptions import parse_response, NotFoundError, BadRequestError
+from .exceptions import parse_response, NotFoundError, \
+    BadRequestError, BlobTooLargeError, GithubException
 
 __all__ = [
     'GithubClient',
@@ -190,7 +192,11 @@ class GithubContent(SimpleNamespace):
     def decoded_content(self):
         assert self.is_file(), 'Not a file'
         if hasattr(self, 'content'):
-            return b64decode(self.content).decode()
+            if hasattr(self, 'encoding'):
+                if self.encoding == 'base64':
+                    return b64decode(self.content).decode()
+                raise NotImplementedError(self.encoding)
+            return self.content or ''
         return ''
 
 
@@ -211,25 +217,38 @@ class ContentRetriever(GithubClient):
         super(ContentRetriever, self).__init__(auth=auth, timeout=timeout)
         self.method = 'GET'
 
-    def __retrieve(self, url):
+    def __retrieve(self, url, output='many'):
         try:
             data, _ = self.request(url=url)
         except (NotFoundError, BadRequestError):
-            return []
-        return data if isinstance(data, list) else [data]
+            data = []
+
+        islist = isinstance(data, list)
+        if output == 'many':
+            return data if islist else [data]
+        elif output == 'one':
+            return itemgetter(0)(data or [None]) if islist else data
+
+        raise NotImplementedError(output)
 
     def retrieve(self, url):
         yield from (GithubContent(**i) for i in self.__retrieve(url))
 
     def retrieve_content(self, item):
-        assert isinstance(item, GithubContent), 'Expected <GithubContent> item'
+        assert isinstance(item, GithubContent), 'Requires <GithubContent> item'
         if item.is_file():
-            data = self.__retrieve(item.url)
-            if data:
-                data = data[0]
+            try:
+                data = self.__retrieve(item.url, output='one')  # type: dict
+            except BlobTooLargeError:
+                try:
+                    data = self.__retrieve(item.download_url, output='one')  # type: str
+                except GithubException:
+                    return
+                else:
+                    setattr(item, 'content', data)
+            else:
                 for attr in ('content', 'encoding'):
-                    if attr in data:
-                        setattr(item, attr, data[attr])
+                    setattr(item, attr, data[attr])
 
     def traverse(self, contents_url):
         traversed = set()

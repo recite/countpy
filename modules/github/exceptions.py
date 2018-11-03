@@ -14,7 +14,6 @@ from modules.logger import get_logger
 
 __all__ = [
     'GithubException',
-    'DataDecodeError',
     'LoginError',
     'NotFoundError',
     'BadRequestError',
@@ -22,6 +21,7 @@ __all__ = [
     'UserAgentError',
     'RateLimitError',
     'AbuseLimitError',
+    'BlobTooLargeError',
     'MaxRetriesExceeded',
     'parse_response',
     'handle_exception'
@@ -45,10 +45,6 @@ class GithubException(Exception):
 
     def __str__(self):
         return '%s: %s %s' % (self.prefix or self.name, self.status, self.data)
-
-
-class DataDecodeError(Exception):
-    delay = MEDIUM_BREAK_DELAY
 
 
 class NotFoundError(GithubException):
@@ -79,6 +75,10 @@ class RateLimitError(GithubException):
 class AbuseLimitError(GithubException):
     delay = LONG_BREAK_DELAY
     prefix = 'GitHub abuse limit violated'
+
+
+class BlobTooLargeError(GithubException):
+    pass
 
 
 class GithubServerError(GithubException):
@@ -130,7 +130,6 @@ def parse_response(response, json=True):
     try:
         data = response.json() if json else response.text
     except JSONDecodeError:
-        cls = DataDecodeError
         data = response.text
 
     # Return parsed data and response object if success
@@ -154,6 +153,8 @@ def parse_response(response, json=True):
             cls = RateLimitError
         elif 'abuse' in message:
             cls = AbuseLimitError
+        elif 'blob is too large' in message:
+            cls = BlobTooLargeError
 
     elif response.status_code == codes.NOT_FOUND:
         cls = NotFoundError

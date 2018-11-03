@@ -194,7 +194,10 @@ class GithubContent(SimpleNamespace):
         if hasattr(self, 'content'):
             if hasattr(self, 'encoding'):
                 if self.encoding == 'base64':
-                    return b64decode(self.content).decode()
+                    try:
+                        return b64decode(self.content).decode()
+                    except UnicodeDecodeError:
+                        return ''
                 raise NotImplementedError(self.encoding)
             return self.content or ''
         return ''

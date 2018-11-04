@@ -53,7 +53,7 @@ class HashType:
         if prefix and not prefix.endswith(_KEYSEP):
             prefix = '{}{}'.format(prefix, _KEYSEP)
         if name.startswith(prefix):
-            return name
+            name = name.replace(prefix, '')
         return '{}{}'.format(prefix, name.lower())
 
     @staticmethod
@@ -148,7 +148,7 @@ class HashType:
         return instance
 
     def __init__(self, name, **attrs):
-        self.name = name
+        self.name = name.lower()
         self.__cache(**attrs)
         self.__load()
 
@@ -256,10 +256,11 @@ class RepoFiles:
     def pkgname_from_path(path):
         dirs, base = os.path.dirname(path), os.path.basename(path)
         if dirs in ('', '/'):
-            return os.path.splitext(base)[0] if RepoFiles.is_pyfile(base) else base
+            pkgname = os.path.splitext(base)[0] if RepoFiles.is_pyfile(base) else base
         else:
             dirs = dirs.split(os.path.sep)
-            return dirs[0] or dirs[1]
+            pkgname = dirs[0] or dirs[1]
+        return pkgname.lower()
 
     @classmethod
     def get_ftype(cls, path):
@@ -283,13 +284,13 @@ class RepoFiles:
             if not found.strip().startswith('.'):
                 for part in found.split(','):
                     pkgname = part.rsplit('as', maxsplit=1)[0].split('.', maxsplit=1)[0]
-                    ret.add(pkgname.strip())
+                    ret.add(pkgname.strip().lower())
         return ret
 
     @classmethod
     def parse_reqfile(cls, content):
         finder = cls._find_packages[cls._reqfile]
-        return {pkgname.lower().strip(): version.strip() for pkgname, version in finder(content)}
+        return {pkgname.strip().lower(): version.strip() for pkgname, version in finder(content)}
 
     def local_packages(self):
         return set(self.pkgname_from_path(path) for path, _ in self.get_pyfiles())

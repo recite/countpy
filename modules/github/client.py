@@ -6,7 +6,7 @@ from operator import itemgetter
 from types import SimpleNamespace
 from requests import Session
 from base64 import b64decode
-from urllib.parse import splitquery, parse_qsl, urljoin
+from urllib.parse import splitquery, parse_qsl, urljoin, quote
 from modules.logger import get_logger
 from . import get_endpoint
 from .limit import GithubLimit, retry
@@ -268,5 +268,7 @@ class ContentRetriever(GithubClient):
                         yield item
                     elif self.is_excluded(item.path):
                         continue
-                    elif item.path not in traversed:
-                        folders.append(item.path)
+                    else:
+                        path = quote(item.path)
+                        if path not in traversed:
+                            folders.append(path)

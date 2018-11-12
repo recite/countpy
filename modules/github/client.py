@@ -10,8 +10,8 @@ from urllib.parse import splitquery, parse_qsl, urljoin, quote
 from modules.logger import get_logger
 from . import get_endpoint
 from .limit import GithubLimit, retry
-from .exceptions import parse_response, NotFoundError, \
-    BadRequestError, BlobTooLargeError, GithubException
+from .exceptions import parse_response, NotFoundError, BadRequestError, \
+    BlobTooLargeError, GithubException, LegalReasonError
 
 __all__ = [
     'GithubClient',
@@ -23,6 +23,8 @@ __all__ = [
 
 DEFAULT_REQUEST_TIMEOUT = 15
 MAX_RESULTS_PER_PAGE = 100
+
+_bypass_errors = (NotFoundError, BadRequestError, LegalReasonError)
 
 
 class GithubClient:
@@ -117,7 +119,7 @@ class Pagination(GithubClient):
         self._prep_params(url, kwargs)
         try:
             data, resp = super(Pagination, self).request(url=url, **kwargs)
-        except (NotFoundError, BadRequestError):
+        except _bypass_errors:
             pass
         else:
             self._parse_links(resp)
@@ -223,7 +225,7 @@ class ContentRetriever(GithubClient):
     def __retrieve(self, url, output='many'):
         try:
             data, _ = self.request(url=url)
-        except (NotFoundError, BadRequestError):
+        except _bypass_errors:
             data = []
 
         islist = isinstance(data, list)

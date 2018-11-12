@@ -23,6 +23,7 @@ __all__ = [
     'AbuseLimitError',
     'BlobTooLargeError',
     'MaxRetriesExceeded',
+    'LegalReasonError',
     'parse_response',
     'handle_exception'
 ]
@@ -83,6 +84,10 @@ class BlobTooLargeError(GithubException):
 
 class GithubServerError(GithubException):
     delay = LONG_BREAK_DELAY
+
+
+class LegalReasonError(GithubException):
+    pass
 
 
 class MaxRetriesExceeded(Exception):
@@ -167,6 +172,9 @@ def parse_response(response, json=True):
 
     elif response.status_code in (codes.SERVER_ERROR, codes.BAD_GATEWAY):
         cls = GithubServerError
+
+    elif response.status_code == codes.UNAVAILABLE_FOR_LEGAL_REASONS:
+        cls = LegalReasonError
 
     # Raise exception
     raise cls(response.status_code, data)

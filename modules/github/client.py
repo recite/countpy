@@ -188,7 +188,7 @@ class GithubSearch(Pagination):
 
 class GithubContent(SimpleNamespace):
     def is_file(self):
-        return self.type == 'file'
+        return self.type == 'file' and self.download_url is not None
 
     @property
     def decoded_content(self):

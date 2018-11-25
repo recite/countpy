@@ -130,23 +130,23 @@ class ProgressBar:
         self.params['suffix'] = str(text)
 
 
-class TaskCounter(Queue):
+class TaskCounter:
     def __init__(self, tasks=None):
-        super(TaskCounter, self).__init__(maxsize=-1)
+        self._queue = Queue(maxsize=-1)
         self.total = len(tasks)
         for task in tasks:
-            self.put_nowait(task)
+            self._queue.put_nowait(task)
 
     @property
     def done(self):
-        return self.total - self.qsize()
+        return self.total - self._queue.qsize()
 
     def status(self):
         return self.done, self.total
 
-    def get(self, *args, **kwargs):
+    def get(self):
         try:
-            return super(TaskCounter, self).get(block=False)
+            return self._queue.get_nowait()
         except Empty:
             return None
 

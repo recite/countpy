@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 
 import time
-from threading import Thread
+from multiprocessing import Process
 from app.models import Repository
 from modules.github.endpoints import SearchRepositories
 from modules.github.client import ContentRetriever
-from modules.logger import get_logger
+from modules.logger import get_logger, client_configurer
 from . import config
 
 __all__ = ['SearchWorker']
 
 
-class SearchWorker(Thread):
+class SearchWorker(Process):
     _keyword = config.get('search_repo_params', 'keyword', fallback='')
     _sort = config.get('search_repo_params', 'sort', fallback=None)
     _order = config.get('search_repo_params', 'order', fallback=None)
@@ -21,13 +21,15 @@ class SearchWorker(Thread):
 
     _repo_fmt = '* {label} repository: {full_name} ({id}) - {url}'
 
-    def __init__(self, user, passwd, slices, repos, event):
+    def __init__(self, user, passwd, slices,
+                 repos, event, log_queue=None, exc_queue=None):
         super(SearchWorker, self).__init__(name=user)
-        self._logger = get_logger(__package__)
+        self._logger = None
         self._slices = slices
         self._repos = repos
         self._event = event
-        self._exception = None
+        self._log_queue = log_queue
+        self._exc_queue = exc_queue
         self._search = None
         self._retriever = None
 
@@ -47,24 +49,29 @@ class SearchWorker(Thread):
         if self._repos is not None:
             self._retriever = ContentRetriever(auth=auth)
 
-    def get_exception(self):
-        return self._exception
-
     def is_running(self):
         return self._event.is_set()
 
     def run(self):
+        # Configure logging
+        if self._log_queue is not None:
+            client_configurer(self._log_queue)
+        self._logger = get_logger(self.name)
+
+        # Run worker
         self._event.wait()
         self._logger.info('Search worker (%s) is started' % self.name)
+
         try:
             self.search_repos()
             self.retrieve_files()
         except AssertionError:
             pass
         except Exception as exc:
-            self._exception = exc
             self._logger.exception(exc)
-            raise
+            if self._exc_queue is not None:
+                self._exc_queue.put((self.name, exc))
+
         self._logger.info('Search worker (%s) is stopped.' % self.name)
 
     def search_repos(self):
@@ -74,7 +81,6 @@ class SearchWorker(Thread):
                 if time_slice is None:
                     break
                 self.search_repos_in_slice(time_slice)
-                self._slices.task_done(time_slice)
 
     def retrieve_files(self):
         if self._retriever is not None:
@@ -85,7 +91,6 @@ class SearchWorker(Thread):
                 if repo_name is None:
                     break
                 self.retrieve_files_in_repo(repo_name)
-                self._repos.task_done()
 
     def search_repos_in_slice(self, time_slice):
         self._logger.info('Searching time slice: %s' % time_slice)

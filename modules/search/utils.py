@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 
 import re
-import os
-import pickle
 import datetime
-from threading import Lock
+from queue import Empty
+from multiprocessing import Queue
 from collections import deque
-from . import _MODULE_DIR, config
+from . import config
 
 __all__ = ['TimeSlices', 'ProgressBar']
 
@@ -131,127 +130,32 @@ class ProgressBar:
         self.params['suffix'] = str(text)
 
 
-class TaskCounter:
+class TaskCounter(Queue):
     def __init__(self, tasks=None):
-        self._lock = Lock()
-        self._tasks = None
-        self._total = None
-        self._done = None
-        self._changed = False
-        if tasks is not None:
-            self.set_tasks(tasks)
-
-    def __len__(self):
-        assert self.isset()
-        with self._lock:
-            return len(self._tasks)
-
-    def __str__(self):
-        with self._lock:
-            return '{}(done={}, total={})'.format(
-                self.__class__.__name__, self._done, self._total)
-
-    def __repr__(self):
-        return str(self)
+        super(TaskCounter, self).__init__(maxsize=-1)
+        self.total = len(tasks)
+        for task in tasks:
+            self.put_nowait(task)
 
     @property
     def done(self):
-        assert self.isset()
-        with self._lock:
-            return self._done
-
-    @property
-    def total(self):
-        assert self.isset()
-        with self._lock:
-            return self._total
-
-    def isset(self):
-        return self._total is not None
-
-    def set_tasks(self, tasks):
-        self._tasks = tasks if isinstance(tasks, deque) else deque(tasks)
-        self._total = len(tasks)
-        self._done = 0
+        return self.total - self.qsize()
 
     def status(self):
-        assert self.isset()
-        with self._lock:
-            return self._done, self._total
+        return self.done, self.total
 
-    def has_changes(self):
-        with self._lock:
-            return self._changed
-
-    def task_done(self, *args, **kwargs):
-        assert self.isset()
-        with self._lock:
-            if self._done < self._total:
-                self._done += 1
-                if not self._changed:
-                    self._changed = True
-
-    def get(self):
-        with self._lock:
-            try:
-                return self._tasks.popleft()
-            except IndexError:
-                return None
-
-    def is_completed(self):
-        assert self.isset()
-        with self._lock:
-            return self._done == self._total
+    def get(self, *args, **kwargs):
+        try:
+            return super(TaskCounter, self).get(block=False)
+        except Empty:
+            return None
 
 
 class TimeSlices(TaskCounter):
-    _save_as_file = os.path.join(_MODULE_DIR, '.timeslices')
-
-    def __init__(self, period=None, window=None, reverse=None, resume=True):
+    def __init__(self, period=None, window=None, reverse=None):
         period = period or config.get('search_period', 'period')
         window = window or config.get('search_period', 'slice')
-        reverse = reverse
-        if reverse is None:
-            reverse = config.getboolean(
-                'search_period', 'newest_first', fallback=False)
-
+        reverse = reverse if reverse is not None else config.getboolean(
+            'search_period', 'newest_first', fallback=False)
         super(TimeSlices, self).__init__(
             tasks=slice_period(period, window, reverse))
-
-        self._resume = resume
-        self._datakey = '_'.join('{}:{}'.format(period, window).split())
-        self._tasks_done = self.__load()
-
-    def __load(self):
-        if os.path.isfile(self._save_as_file):
-            if self._resume:
-                with open(self._save_as_file, 'rb') as fp:
-                    data = pickle.load(fp)
-                if self._datakey in data:
-                    items = data[self._datakey]
-                    self._done = len(items)
-                    return items
-            os.remove(self._save_as_file)
-        return set()
-
-    def save(self):
-        if self._resume:
-            with self._lock:
-                data = {self._datakey: self._tasks_done}
-            with open(self._save_as_file, 'wb') as fp:
-                pickle.dump(data, fp)
-
-    def task_done(self, item):
-        if self._resume:
-            with self._lock:
-                self._tasks_done.add(item)
-        super(TimeSlices, self).task_done()
-
-    def get(self):
-        while True:
-            item = super(TimeSlices, self).get()
-            if item and self._resume:
-                with self._lock:
-                    if item in self._tasks_done:
-                        continue
-            return item

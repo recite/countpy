@@ -20,12 +20,6 @@ def get_args():
     # Setup arguments
     parser = ArgumentParser()
 
-    parser.add_argument('--no-resume', action='store_true', default=False,
-                        help='Prevent the program from loading and resuming '
-                             'from previous incomplete running state, also '
-                             'not allow it to save its running state if being '
-                             'suddenly stopped.')
-
     parser.add_argument('--verbose', action='store_true', default=False,
                         help='Displays searching progress in verbose')
 
@@ -79,7 +73,6 @@ def main():
     args = get_args()
 
     search = SearchCode(
-        resume=not args.no_resume,
         verbose=args.verbose,
         mode=args.mode,
         anonymous=args.anonymous,

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import time
-from threading import Event
-from modules.logger import log_configurer
+from queue import Empty
+from multiprocessing import Event, Queue
+from modules.logger import LogServer
 from . import config
 from .utils import TaskCounter, TimeSlices, ProgressBar
 from .worker import SearchWorker
@@ -12,8 +13,8 @@ __all__ = ['SearchCode']
 
 
 class SearchCode:
-    def __init__(self, resume=True, search_order=None, verbose=False,
-                 mode=None, anonymous=False, threads=None, logfile=None):
+    def __init__(self, search_order=None, verbose=False, mode=None,
+                 anonymous=False, threads=None, logfile=None):
         self.slices = None
         self.repos = None
         self._run_event = Event()
@@ -21,10 +22,8 @@ class SearchCode:
         # Prepare search time slices
         mode = mode or 'both'
         if mode == 'both' or mode == 'search-only':
-            reverse = None
-            if search_order is not None:
-                reverse = search_order.lower() == 'desc'
-            self.slices = TimeSlices(resume=resume, reverse=reverse)
+            reverse = search_order.lower() == 'desc' if search_order else None
+            self.slices = TimeSlices(reverse=reverse)
 
         # Query all local repositories
         if mode == 'both' or mode == 'retrieve-only':
@@ -32,7 +31,6 @@ class SearchCode:
                 tasks=Repository.query_all(name_only=True, lazy=False))
 
         # Verbose or show progress
-        log_configurer(verbose, logfile)
         self._progress = None if verbose else ProgressBar()
 
         # Anonymous or authentic
@@ -43,14 +41,23 @@ class SearchCode:
             auths = config.items('credentials')
             assert auths, 'No Github credential found'
 
+        # Init queues
+        self._log_queue = Queue()
+        self._exc_queue = Queue()
+
+        # Init log server
+        self.logsrv = LogServer(self._log_queue, verbose, logfile)
+
         # Init search workers
         self.workers = [
-            SearchWorker(user, passwd, self.slices, self.repos, self._run_event)
+            SearchWorker(user, passwd, self.slices, self.repos,
+                         self._run_event, self._log_queue, self._exc_queue)
             for user, passwd in auths
         ]
 
     def run(self):
         assert self.workers, 'No worker to run'
+        self.logsrv.start()
         for worker in self.workers:
             worker.start()
         self._run_event.set()
@@ -65,10 +72,11 @@ class SearchCode:
     def end(self):
         if self.is_running():
             self.stop()
-        if self.slices.has_changes():
-            self.slices.save()
         if self._progress is not None:
             self._progress.end()
+        if self.logsrv.is_alive():
+            self._log_queue.put(None)
+            self.logsrv.join()
 
     def join_workers(self):
         for worker in self.workers:
@@ -76,20 +84,25 @@ class SearchCode:
                 worker.join()
 
     def raise_worker_exceptions(self):
-        for worker in self.workers:
-            exc = worker.get_exception()
-            if exc:
-                raise exc
+        try:
+            _, exc = self._exc_queue.get_nowait()
+        except Empty:
+            return
+        else:
+            self.end()
+            raise exc
 
     def show_progress(self):
         def _show(haystack, prefix, suffix):
             self._progress.set_prefix(prefix)
             self._progress.set_suffix('of %s %s' % (haystack.total, suffix))
-            while not haystack.is_completed() and self.is_running():
+            while self.is_running():
                 done, total = haystack.status()
+                if done == total:
+                    break
                 self._progress.print(done, total)
                 self.raise_worker_exceptions()
-                time.sleep(.1)
+                time.sleep(.5)
 
         if self._progress is not None:
             if self.slices is not None:

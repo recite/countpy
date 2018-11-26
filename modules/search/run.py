@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import time
 from queue import Empty
 from multiprocessing import Event, Queue
 from modules.logger import LogServer
 from . import config
-from .utils import TaskCounter, TimeSlices, ProgressBar
+from .utils import slice_period
 from .worker import SearchWorker
 from app.models import Repository
 
@@ -19,20 +18,6 @@ class SearchCode:
         self.repos = None
         self._run_event = Event()
 
-        # Prepare search time slices
-        mode = mode or 'both'
-        if mode == 'both' or mode == 'search-only':
-            reverse = search_order.lower() == 'desc' if search_order else None
-            self.slices = TimeSlices(reverse=reverse)
-
-        # Query all local repositories
-        if mode == 'both' or mode == 'retrieve-only':
-            self.repos = TaskCounter(
-                tasks=Repository.query_all(name_only=True, lazy=False))
-
-        # Verbose or show progress
-        self._progress = None if verbose else ProgressBar()
-
         # Anonymous or authentic
         if anonymous:
             threads = int(threads) if threads else 1
@@ -41,14 +26,28 @@ class SearchCode:
             auths = config.items('credentials')
             assert auths, 'No Github credential found'
 
-        # Init queues
-        self._log_queue = Queue()
-        self._exc_queue = Queue()
+        # Prepare search time slices
+        mode = mode or 'both'
+        if mode == 'both' or mode == 'search-only':
+            self.slices = Queue()
+            period = config.get('search_period', 'period')
+            window = config.get('search_period', 'slice')
+            reverse = search_order.lower() == 'desc' if search_order else None
+            for time_slice in slice_period(period, window, reverse):
+                self.slices.put_nowait(time_slice)
+
+        # Query all local repositories
+        if mode == 'both' or mode == 'retrieve-only':
+            self.repos = Queue()
+            for repo in Repository.query_all(name_only=True):
+                self.repos.put_nowait(repo)
 
         # Init log server
+        self._log_queue = Queue()
         self.logsrv = LogServer(self._log_queue, verbose, logfile)
 
         # Init search workers
+        self._exc_queue = Queue()
         self.workers = [
             SearchWorker(user, passwd, self.slices, self.repos,
                          self._run_event, self._log_queue, self._exc_queue)
@@ -67,13 +66,15 @@ class SearchCode:
 
     def stop(self):
         self._run_event.clear()
+        if self.slices:
+            self.slices.put_nowait(None)
+        if self.repos:
+            self.repos.put_nowait(None)
         self.join_workers()
 
     def end(self):
         if self.is_running():
             self.stop()
-        if self._progress is not None:
-            self._progress.end()
         if self.logsrv.is_alive():
             self._log_queue.put(None)
             self.logsrv.join()
@@ -92,26 +93,7 @@ class SearchCode:
             self.end()
             raise exc
 
-    def show_progress(self):
-        def _show(haystack, prefix, suffix):
-            self._progress.set_prefix(prefix)
-            self._progress.set_suffix('of %s %s' % (haystack.total, suffix))
-            while self.is_running():
-                done, total = haystack.status()
-                if done == total:
-                    break
-                self._progress.print(done, total)
-                self.raise_worker_exceptions()
-                time.sleep(.5)
-
-        if self._progress is not None:
-            if self.slices is not None:
-                _show(self.slices, 'Search repositories:', 'time slices')
-            if self.repos is not None:
-                _show(self.repos, 'Retrieve contents  :', 'repositories')
-
     def wait_until_finish(self):
         if self.is_running():
-            self.show_progress()
             self.join_workers()
             self.raise_worker_exceptions()

@@ -38,9 +38,6 @@ def get_args():
                         help='Number of threads running, used only if '
                              '"--anonymous" exists (default is 1).')
 
-    parser.add_argument('--log-to-file', action='store_true', default=False,
-                        help='Write running progress into "searchpy.log"')
-
     # Parse arguments
     args = parser.parse_args()
 
@@ -55,11 +52,8 @@ def get_args():
     else:
         args.mode = None
 
-    # Whether to log progress into file
-    if args.log_to_file:
-        args.logfile = os.path.join(_MODULE_DIR, LOG_FILENAME)
-    else:
-        args.logfile = None
+    # Log progress into file
+    args.logfile = os.path.join(_MODULE_DIR, LOG_FILENAME)
 
     # Return input arguments
     return args

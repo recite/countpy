@@ -2,12 +2,9 @@
 
 import re
 import datetime
-from queue import Empty
-from multiprocessing import Queue
 from collections import deque
-from . import config
 
-__all__ = ['TimeSlices', 'ProgressBar']
+__all__ = ['slice_period', 'to_second']
 
 
 # Method for matching time_annotation string
@@ -75,87 +72,3 @@ def slice_period(period, window, reverse=True):
         cursor = stop
 
     return deque(reversed(slices) if reverse else slices)
-
-
-class ProgressBar:
-    __end_char = '\n'
-    __empty_char = '-'
-    __filled_char = '█'
-
-    __print_fmt = '\r{prefix} |{bar}| {rate}% {suffix}'
-
-    def __init__(self, total=None, prefix='Progress:',
-                 suffix='Complete', decimals=1, length=50):
-        self.total = int(total or 0)
-        self.length = int(length)
-        self.params = {'prefix': prefix, 'suffix': suffix}
-        self.__rate_fmt = '{0:.%sf}' % decimals
-        self.__printed = False
-        self.__last_printed = False
-
-    def __print_bar(self, end=None, **params):
-        end = end or '\r'
-        print(self.__print_fmt.format(**params), end=end)
-        if not self.__printed:
-            self.__printed = True
-        if end == self.__end_char:
-            self.__last_printed = True
-
-    def __gen_params(self, complete, total):
-        filled_length = int(self.length * complete // total)
-        filled_chars = self.__filled_char * filled_length
-
-        empty_length = self.length - filled_length
-        empty_chars = self.__empty_char * empty_length
-
-        rate = self.__rate_fmt.format(complete / float(total) * 100)
-        bar = '{}{}'.format(filled_chars, empty_chars)
-        return dict(bar=bar, rate=rate, **self.params)
-
-    def print(self, complete=0, total=None, **kwargs):
-        total = total or self.total
-        end = self.__end_char if complete == total else None
-        params = self.__gen_params(complete, total)
-        params.update(kwargs)
-        self.__print_bar(end, **params)
-
-    def end(self):
-        if self.__printed and not self.__last_printed:
-            print()
-
-    def set_prefix(self, text):
-        self.params['prefix'] = str(text)
-
-    def set_suffix(self, text):
-        self.params['suffix'] = str(text)
-
-
-class TaskCounter:
-    def __init__(self, tasks=None):
-        self._queue = Queue(maxsize=-1)
-        self.total = len(tasks)
-        for task in tasks:
-            self._queue.put_nowait(task)
-
-    @property
-    def done(self):
-        return self.total - self._queue.qsize()
-
-    def status(self):
-        return self.done, self.total
-
-    def get(self):
-        try:
-            return self._queue.get_nowait()
-        except Empty:
-            return None
-
-
-class TimeSlices(TaskCounter):
-    def __init__(self, period=None, window=None, reverse=None):
-        period = period or config.get('search_period', 'period')
-        window = window or config.get('search_period', 'slice')
-        reverse = reverse if reverse is not None else config.getboolean(
-            'search_period', 'newest_first', fallback=False)
-        super(TimeSlices, self).__init__(
-            tasks=slice_period(period, window, reverse))

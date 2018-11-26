@@ -21,8 +21,8 @@ class SearchWorker(Process):
 
     _repo_fmt = '* {label} repository: {full_name} ({id}) - {url}'
 
-    def __init__(self, user, passwd, slices,
-                 repos, event, log_queue=None, exc_queue=None):
+    def __init__(self, user, passwd, slices, repos,
+                 event, log_queue=None, exc_queue=None):
         super(SearchWorker, self).__init__(name=user)
         self._logger = None
         self._slices = slices
@@ -103,11 +103,17 @@ class SearchWorker(Process):
                 continue
             self._logger.info(
                 self._repo_fmt.format(label='Found', **repo.__dict__))
+
+            # Newly create repo in database
             newrepo = Repository(repo.full_name)
             newrepo.set_id(repo.id)
             newrepo.set_url(repo.url)
             newrepo.set_contents_url(repo.contents_url)
             newrepo.commit_changes()
+
+            # Queue repository for later retrieving
+            if self._repos is not None:
+                self._repos.put(repo.full_name)
 
     def retrieve_files_in_repo(self, repo_name):
         repo = Repository(repo_name)

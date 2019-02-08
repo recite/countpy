@@ -1,0 +1,26 @@
+{%- if numrepos -%}
+    {%- set imargin = 3.5 -%}
+    {%- set omargin = 5.5 -%}
+    {%- set left_width = 55 -%}
+    {%- set numrepos = numrepos|string -%}
+    {%- set numsize = numrepos|fontwidth -%}
+    {%- set right_width = imargin + numsize + omargin -%}
+    {%- set width = left_width + right_width -%}
+    {%- set num_x = left_width + imargin + numsize/2 -%}
+{%- endif -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ width }}" height="20">
+    <linearGradient id="a" x2="0" y2="100%">
+        <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+        <stop offset="1" stop-opacity=".1"/>
+    </linearGradient>
+    <rect rx="3" width="{{ width }}" height="20" fill="#555"/>
+    <rect rx="3" x="{{ left_width }}" width="{{ right_width }}" height="20" fill="#4c1"/>
+    <path fill="#4c1" d="M{{ left_width }} 0h4v20h-4z"/>
+    <rect rx="3" width="{{ width }}" height="20" fill="url(#a)"/>
+    <g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11">
+        <text x="28.5" y="15" fill="#010101" fill-opacity=".3">countpy</text>
+        <text x="28.5" y="14">countpy</text>
+        <text x="{{ num_x }}" y="15" fill="#010101" fill-opacity=".3">{{ numrepos }}</text>
+        <text x="{{ num_x }}" y="14">{{ numrepos }}</text>
+    </g>
+</svg>

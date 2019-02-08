@@ -7,9 +7,9 @@ Rendering application pages.
 """
 
 from copy import deepcopy
-from flask import render_template, request, abort, flash
+from flask import render_template, request, abort, flash, Response
 from . import app
-from .utils import template_exists, find_packages
+from .utils import template_exists, find_packages, find_package
 
 DATE_FORMAT = '%Y-%m-%d'
 GLOBAL_VARS = {
@@ -81,6 +81,15 @@ def about():
 def contact():
     """Renders Contact page"""
     return _render('contact')
+
+
+@app.route('/badge/<pkgname>')
+def badge(pkgname):
+    pkg = find_package(pkgname)
+    if pkg is None:
+        abort(404, 'No package found')
+    content = render_template('badge.svg', numrepos=pkg.num_repos)
+    return Response(content, mimetype='image/svg+xml; charset=utf-8')
 
 
 def search(keywords):

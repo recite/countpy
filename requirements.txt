@@ -4,3 +4,4 @@ jinja2>=2.10
 uwsgi>=2.0.17
 python-levenshtein
 redis
+Pillow

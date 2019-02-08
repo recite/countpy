@@ -99,3 +99,11 @@ def shortnum(num, decimals=2):
         return '%sK' % beautinum(num / 1000, decimals)
     else:
         return str(beautinum(num))
+
+
+def anchor(href, text=None, **kwargs):
+    text = text or href
+    attrs = ''
+    if kwargs:
+        attrs = ' ' + ' '.join('{}="{}"'.format(k, v) for k, v in kwargs.items())
+    return '<a href="%s"%s>%s</a>' % (href, attrs, text)

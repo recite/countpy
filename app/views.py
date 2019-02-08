@@ -7,9 +7,10 @@ Rendering application pages.
 """
 
 from copy import deepcopy
-from flask import render_template, request, abort, flash, Response
+from flask import render_template, request, abort, flash, Response, url_for
 from . import app
-from .utils import template_exists, find_packages, find_package
+from .models import Repository
+from .utils import template_exists, find_packages, find_package, anchor
 
 DATE_FORMAT = '%Y-%m-%d'
 GLOBAL_VARS = {
@@ -92,16 +93,35 @@ def badge(pkgname):
     return Response(content, mimetype='image/svg+xml; charset=utf-8')
 
 
+@app.route('/package/<pkgname>')
+def detail(pkgname):
+    pkg = find_package(pkgname)
+    if pkg is None:
+        abort(404, 'No package found')
+
+    results = [('repo:name', 'repo:url')]
+    for name in sorted(pkg.repos):
+        url = ''
+        repo = Repository(name)
+        if repo.url:
+            url = repo.url.replace('api.', '').replace('/repos', '')
+        results.append((repo.full_name, anchor(url, target='_blank')))
+
+    return _render('detail', pkgname=pkgname, numrepos=pkg.num_repos, results=results)
+
+
 def search(keywords):
     packages = find_packages(names=keywords.split())
     if packages:
         page_title = app.config.get('INDEX_PAGE_TITLE')
         page_header = app.config.get('INDEX_PAGE_HEADER')
         table_header = app.config.get('SEARCH_RESULT_HEADER_ROW')
-        results = [table_header] + [
-            (p.name, p.num_repos, p.num_pyfiles, p.num_reqfiles, p.str_updated(DATE_FORMAT))
-            for p in packages
-        ]
+
+        results = [table_header] + [(
+            anchor(url_for('detail', pkgname=p.name), p.name), p.num_repos,
+            p.num_pyfiles, p.num_reqfiles, p.str_updated(DATE_FORMAT)
+        ) for p in packages]
+
         return _render('result', total=len(packages), title=page_title,
                        header=page_header, keywords=keywords, results=results)
 

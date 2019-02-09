@@ -1,0 +1,65 @@
+{% macro render_pagination(pagination) %}
+  {%- if pagination.pages > 1 %}
+  <div class="float-right">
+  {%- if pagination.has_prev %}
+    <a href="{{ url_for_other_page(pagination.page - 1) }}">&laquo; Previous&nbsp;</a>
+  {%- endif %}
+  {%- for page in pagination.iter_pages() %}
+    {%- if page %}
+      {%- if page != pagination.page %}
+        <a href="{{ url_for_other_page(page) }}">{{ page }}</a>
+      {%- else %}
+        <strong>{{ page }}</strong>
+      {%- endif %}
+    {%- else %}
+      <span class=ellipsis>…</span>
+    {%- endif %}
+  {%- endfor %}
+  {%- if pagination.has_next %}
+    <a href="{{ url_for_other_page(pagination.page + 1) }}">&nbsp;Next &raquo;</a>
+  {%- endif %}
+  </div>
+  {%- endif %}
+{%- endmacro %}
+
+{%- macro render_table(title, results, pagination=None) %}
+  {%- if pagination %}
+    {%- set leftclass = ' col-auto col-sm-6' %}
+  {%- else %}
+    {%- set leftclass = ' col-12' %}
+  {%- endif %}
+  <div class="row mb-5">
+    <h4 class="font-weight-bold font-italic{{ leftclass }}">{{ title }}</h4>
+    {%- if pagination %}
+    <div class="col-auto col-sm-6">
+      {{ render_pagination(pagination) }}
+    </div>
+    {%- endif %}
+  </div>
+  <table class="table table-hover">
+  {%- for row in results %}
+    {%- if row and loop.first %}
+      {%- set rtag = 'thead' %}
+      {%- set ctag = 'th' %}
+    {%- else %}
+      {%- set rtag = 'tbody' %}
+      {%- set ctag = 'td' %}
+    {%- endif %}
+    <{{ rtag  }}>
+      <tr>
+      {%- for cell in row %}
+        <{{ ctag }}>{{ cell|safe }}</{{ ctag }}>
+      {%- endfor %}
+      </tr>
+    </{{ rtag }}>
+  {%- endfor %}
+  </table>
+  {%- if pagination %}
+  <div class="row mt-5">
+    <div class="col-12">
+      {{ render_pagination(pagination) }}
+    </div>
+  </div>
+  {%- endif %}
+{%- endmacro %}
+

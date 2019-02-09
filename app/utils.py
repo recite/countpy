@@ -7,12 +7,13 @@ Utilities for the application.
 """
 
 import os
-from flask import url_for
+from math import ceil
+from flask import url_for, request
 from operator import itemgetter
 from Levenshtein import distance
 from PIL import ImageFont
 from . import app
-from .models import Package
+from .models import Package, Repository
 
 
 def endswith(str1, str2):
@@ -43,10 +44,17 @@ def fontheight(text, font='DejaVuSans', size=11):
     return fontsize(text, font, size)[-1]
 
 
+def url_for_other_page(page):
+    args = request.view_args.copy()
+    args['page'] = page
+    return url_for(request.endpoint, **args)
+
+
 app.jinja_env.tests['endswith'] = endswith
 app.jinja_env.filters['static_url'] = static_url
 app.jinja_env.filters['fontwidth'] = fontwidth
 app.jinja_env.filters['fontheight'] = fontheight
+app.jinja_env.globals['url_for_other_page'] = url_for_other_page
 
 
 def template_exists(template):
@@ -107,3 +115,48 @@ def anchor(href, text=None, **kwargs):
     if kwargs:
         attrs = ' ' + ' '.join('{}="{}"'.format(k, v) for k, v in kwargs.items())
     return '<a href="%s"%s>%s</a>' % (href, attrs, text)
+
+
+class Pagination:
+    def __init__(self, page, per_page, total_count):
+        self.page = page
+        self.per_page = per_page
+        self.total_count = total_count
+
+    @property
+    def pages(self):
+        return int(ceil(self.total_count / float(self.per_page)))
+
+    @property
+    def has_prev(self):
+        return self.page > 1
+
+    @property
+    def has_next(self):
+        return self.page < self.pages
+
+    def iter_pages(self, left_edge=2, left_current=2,
+                   right_current=5, right_edge=2):
+        last = 0
+        for num in range(1, self.pages + 1):
+            if num <= left_edge or \
+                    self.page - left_current - 1 < num < self.page + right_current or \
+                    num > self.pages - right_edge:
+                if last + 1 != num:
+                    yield None
+                yield num
+                last = num
+
+
+def get_pkg_repos(pkgname, page: int, per_page: int):
+    if page > 0:
+        pkg = find_package(pkgname)
+        if pkg and pkg.num_repos > 0:
+            s = slice(per_page * page - per_page, per_page * page)
+            p = Pagination(page, per_page, pkg.num_repos)
+            return [Repository(name) for name in sorted(pkg.repos)[s]], p
+    return [], None
+
+
+def github_url(url: str):
+    return url.replace('api.', '').replace('/repos', '')

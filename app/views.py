@@ -7,12 +7,12 @@ Rendering application pages.
 """
 
 from copy import deepcopy
-from flask import render_template, request, abort, flash, Response, url_for
+from flask import render_template, request, \
+    abort, flash, Response, url_for
 from . import app
-from .models import Repository
-from .utils import template_exists, find_packages, find_package, anchor
+from .utils import template_exists, find_packages, \
+    find_package, anchor, get_pkg_repos, github_url
 
-DATE_FORMAT = '%Y-%m-%d'
 GLOBAL_VARS = {
     'navbar': [
         # (href, caption)
@@ -35,6 +35,9 @@ GLOBAL_VARS = {
         'js/app.js'
     ]
 }
+
+PER_PAGE = app.config.get('PER_PAGE')
+DATE_FORMAT = '%Y-%m-%d'
 
 
 def _render(page_id, **kwargs):
@@ -93,21 +96,21 @@ def badge(pkgname):
     return Response(content, mimetype='image/svg+xml; charset=utf-8')
 
 
-@app.route('/package/<pkgname>')
-def detail(pkgname):
-    pkg = find_package(pkgname)
-    if pkg is None:
-        abort(404, 'No package found')
+@app.route('/package/<pkgname>/', defaults={'page': 1})
+@app.route('/package/<pkgname>/<int:page>')
+def detail(pkgname, page):
+    repos, pagination = get_pkg_repos(pkgname, page, PER_PAGE)
+    if not repos and page != 1:
+        abort(404)
 
-    results = [('repo:name', 'repo:url')]
-    for name in sorted(pkg.repos):
-        url = ''
-        repo = Repository(name)
-        if repo.url:
-            url = repo.url.replace('api.', '').replace('/repos', '')
+    total = pagination.total_count
+    results = [app.config.get('PKG_REPOS_HEADER_ROW')]
+    for repo in repos:
+        url = github_url(repo.url) if repo.url else ''
         results.append((repo.full_name, anchor(url, target='_blank')))
 
-    return _render('detail', pkgname=pkgname, numrepos=pkg.num_repos, results=results)
+    return _render('detail', pkgname=pkgname, numrepos=total,
+                   results=results, pagination=pagination)
 
 
 def search(keywords):
@@ -115,12 +118,15 @@ def search(keywords):
     if packages:
         page_title = app.config.get('INDEX_PAGE_TITLE')
         page_header = app.config.get('INDEX_PAGE_HEADER')
-        table_header = app.config.get('SEARCH_RESULT_HEADER_ROW')
 
-        results = [table_header] + [(
-            anchor(url_for('detail', pkgname=p.name), p.name), p.num_repos,
-            p.num_pyfiles, p.num_reqfiles, p.str_updated(DATE_FORMAT)
-        ) for p in packages]
+        results = [app.config.get('SEARCH_RESULT_HEADER_ROW')]
+        for p in packages:
+            date = p.str_updated(DATE_FORMAT)
+            if p.num_repos > 0:
+                name = anchor(url_for('detail', pkgname=p.name), p.name)
+            else:
+                name = p.name
+            results.append((name, p.num_repos, p.num_pyfiles, p.num_reqfiles, date))
 
         return _render('result', total=len(packages), title=page_title,
                        header=page_header, keywords=keywords, results=results)

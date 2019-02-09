@@ -20,5 +20,12 @@ GITHUB_URL = 'https://github.com/soodoku/countpy'
 
 # Header row for displaying search result table
 SEARCH_RESULT_HEADER_ROW = (
-    'package', 'number of repositories importing', 'number of files', 'number of requirements files', 'date'
+    'package', 'number of repositories importing', 'number of files',
+    'number of requirements files', 'date'
 )
+
+# Header row for displaying repositories table of package
+PKG_REPOS_HEADER_ROW = ('repo:name', 'repo:url')
+
+# Number of items per page applied for table with pagination
+PER_PAGE = 20

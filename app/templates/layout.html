@@ -32,13 +32,13 @@
   </button>
   <div class="collapse navbar-collapse" id="navbarNav">
     <ul class="navbar-nav">
-    {% for href, caption in navbar %}
-      {% if href %}
+    {%- for href, caption in navbar %}
+      {%- if href %}
       <li class="nav-item{% if request.path == href %} active{% endif %}">
         <a class="nav-link" href="{{ href }}">{{ caption }}</a>
       </li>
-      {% endif %}
-    {% endfor %}
+      {%- endif %}
+    {%- endfor %}
     </ul>
   </div>
 {%- endif -%}

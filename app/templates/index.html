@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 {% block body %}
-  <form action="" method="post">
+  <form action="{{ url_for('index') }}" method="post">
     <div class="input-group mb-3">
       <input name="keywords" type="text" class="form-control border-dark" style="box-shadow: none;"
              placeholder="Enter python libraries to search..."{% if keywords %} value="{{ keywords|safe }}"{% endif %}>

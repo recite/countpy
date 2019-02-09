@@ -93,7 +93,7 @@ def find_packages(names, page, per_page):
     if found:
         s = slice(per_page * page - per_page, per_page * page)
         pagination = Pagination(page, per_page, len(found))
-        return [Package(name) for name in sorted(found)[s]], pagination
+        return [Package(name) for name in found[s]], pagination
 
     return [], None
 

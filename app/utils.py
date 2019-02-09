@@ -75,21 +75,27 @@ def find_package(name):
     return None
 
 
-def find_packages(names):
-    assert isinstance(names, (list, tuple))
-    found = []
-    packages = None
+def find_packages(names, page, per_page):
+    if not isinstance(names, (list, tuple)):
+        names = [names]
+
+    found, packages = [], None
     for name in names:
         if Package.exists(name):
-            found.append(Package(name))
+            found.append(name)
         else:
             if packages is None:
                 packages = Package.query_all(name_only=True, lazy=False)
             if packages:
                 similars = find_similars(name, packages)
-                if similars:
-                    found.extend([Package(name) for name in similars])
-    return found
+                found.extend(similars)
+
+    if found:
+        s = slice(per_page * page - per_page, per_page * page)
+        pagination = Pagination(page, per_page, len(found))
+        return [Package(name) for name in sorted(found)[s]], pagination
+
+    return [], None
 
 
 def beautinum(num, decimals=None):
@@ -153,8 +159,8 @@ def get_pkg_repos(pkgname, page: int, per_page: int):
         pkg = find_package(pkgname)
         if pkg and pkg.num_repos > 0:
             s = slice(per_page * page - per_page, per_page * page)
-            p = Pagination(page, per_page, pkg.num_repos)
-            return [Repository(name) for name in sorted(pkg.repos)[s]], p
+            pagination = Pagination(page, per_page, pkg.num_repos)
+            return [Repository(name) for name in sorted(pkg.repos)[s]], pagination
     return [], None
 
 

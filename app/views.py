@@ -7,8 +7,9 @@ Rendering application pages.
 """
 
 from copy import deepcopy
+from urllib.parse import quote, unquote
 from flask import render_template, request, \
-    abort, flash, Response, url_for
+    abort, flash, Response, url_for, redirect
 from . import app
 from .utils import template_exists, find_packages, \
     find_package, anchor, get_pkg_repos, github_url
@@ -69,7 +70,7 @@ def index():
     if request.method == 'POST':
         keywords = request.form.get('keywords')
         if keywords:
-            return search(keywords)
+            return redirect(url_for('result', keywords=quote(keywords)))
 
     # Method is GET or POST with empty data
     return _render('index')
@@ -113,24 +114,30 @@ def detail(pkgname, page):
                    results=results, pagination=pagination)
 
 
-def search(keywords):
-    packages = find_packages(names=keywords.split())
-    if packages:
-        page_title = app.config.get('INDEX_PAGE_TITLE')
-        page_header = app.config.get('INDEX_PAGE_HEADER')
+@app.route('/result/<keywords>/', defaults={'page': 1})
+@app.route('/result/<keywords>/<int:page>')
+def result(keywords, page):
+    keywords = unquote(keywords)
+    packages, pagination = find_packages(keywords.split(), page, PER_PAGE)
+    if not packages:
+        if page == 1:
+            flash('No packages found.', 'failed')
+            return _render('index', keywords=keywords)
+        else:
+            abort(404)
 
-        results = [app.config.get('SEARCH_RESULT_HEADER_ROW')]
-        for p in packages:
-            date = p.str_updated(DATE_FORMAT)
-            if p.num_repos > 0:
-                name = anchor(url_for('detail', pkgname=p.name), p.name)
-            else:
-                name = p.name
-            results.append((name, p.num_repos, p.num_pyfiles, p.num_reqfiles, date))
+    total = pagination.total_count
+    page_title = app.config.get('INDEX_PAGE_TITLE')
+    page_header = app.config.get('INDEX_PAGE_HEADER')
+    results = [app.config.get('SEARCH_RESULT_HEADER_ROW')]
 
-        return _render('result', total=len(packages), title=page_title,
-                       header=page_header, keywords=keywords, results=results)
+    for p in packages:
+        if p.num_repos > 0:
+            name = anchor(url_for('detail', pkgname=p.name), p.name)
+        else:
+            name = p.name
+        results.append((name, p.num_repos, p.num_pyfiles,
+                        p.num_reqfiles, p.str_updated(DATE_FORMAT)))
 
-    else:
-        flash('No packages found.', 'failed')
-        return _render('index', keywords=keywords)
+    return _render('result', total=total, title=page_title, header=page_header,
+                   keywords=keywords, results=results, pagination=pagination)

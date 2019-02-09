@@ -8,7 +8,7 @@
     {%- set rtitle = 'Results' %}
   {%- endif %}
   <div class="mt-5">
-    {{ render_table(rtitle, results) }}
+    {{ render_table(rtitle, results, pagination) }}
   </div>
 {%- endif -%}
 {% endblock %}

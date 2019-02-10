@@ -29,3 +29,7 @@ PKG_REPOS_HEADER_ROW = ('repo:name', 'repo:url')
 
 # Number of items per page applied for table with pagination
 PER_PAGE = 20
+
+# When enabled, the number displayed in badge will be shortened, in which
+# instead of '1500', it will become '1.5K' as example
+SHORTEN_NUMBER_IN_BADGE = False

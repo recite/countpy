@@ -12,7 +12,7 @@ from flask import render_template, request, \
     abort, flash, Response, url_for, redirect
 from . import app
 from .utils import template_exists, find_packages, \
-    find_package, anchor, get_pkg_repos, github_url
+    find_package, anchor, get_pkg_repos, github_url, shortnum
 
 GLOBAL_VARS = {
     'navbar': [
@@ -93,7 +93,10 @@ def badge(pkgname):
     pkg = find_package(pkgname)
     if pkg is None:
         abort(404, 'No package found')
-    content = render_template('badge.svg', numrepos=pkg.num_repos)
+    shorten = 'short' in request.args or \
+              app.config.get('SHORTEN_NUMBER_IN_BADGE') is True
+    numrepos = shortnum(pkg.num_repos) if shorten else pkg.num_repos
+    content = render_template('badge.svg', numrepos=numrepos)
     return Response(content, mimetype='image/svg+xml; charset=utf-8')
 
 

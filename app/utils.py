@@ -110,7 +110,7 @@ def shortnum(num, decimals=2):
     if num > 1000000:
         return '%sM' % beautinum(num/1000000, decimals)
     elif num > 1000:
-        return '%sK' % beautinum(num / 1000, decimals)
+        return '%sk' % beautinum(num / 1000, decimals)
     else:
         return str(beautinum(num))
 

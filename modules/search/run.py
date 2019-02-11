@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import time
 from queue import Empty
 from multiprocessing import Event, Queue
-from modules.logger import LogServer
+from modules.logger import LogServer, client_configurer, get_logger
 from . import config
 from .utils import slice_period
 from .worker import SearchWorker
-from app.models import Repository
+from app.models import Repository, Snapshot
 
 __all__ = ['SearchCode']
 
@@ -16,6 +17,7 @@ class SearchCode:
                  anonymous=False, threads=None, logfile=None):
         self.slices = None
         self.repos = None
+        self._logger = None
         self._run_event = Event()
 
         # Anonymous or authentic
@@ -54,12 +56,17 @@ class SearchCode:
             for user, passwd in auths
         ]
 
+        # Init snapshot method
+        self.snapshot = Snapshot()
+
     def run(self):
         assert self.workers, 'No worker to run'
         self.logsrv.start()
         for worker in self.workers:
             worker.start()
         self._run_event.set()
+        client_configurer(self._log_queue)
+        self._logger = get_logger(self.__class__.__name__)
 
     def is_running(self):
         return self._run_event.is_set()
@@ -73,8 +80,14 @@ class SearchCode:
         self.join_workers()
 
     def end(self):
+        # Stop workers
         if self.is_running():
             self.stop()
+            # Save data
+            self._logger.info('Saving database...')
+            self.snapshot.save(force=True)
+
+        # Stop log server
         if self.logsrv.is_alive():
             self._log_queue.put(None)
             self.logsrv.join()
@@ -83,6 +96,15 @@ class SearchCode:
         for worker in self.workers:
             if worker.is_alive():
                 worker.join()
+        self.raise_worker_exceptions()
+
+    def join_snapshot(self):
+        while self.is_running():
+            if self.snapshot.saveable():
+                self._logger.info('Saving database...')
+                self.snapshot.save(force=True)
+            self.raise_worker_exceptions()
+            time.sleep(3)
 
     def raise_worker_exceptions(self):
         try:
@@ -95,5 +117,4 @@ class SearchCode:
 
     def wait_until_finish(self):
         if self.is_running():
-            self.join_workers()
-            self.raise_worker_exceptions()
+            self.join_snapshot()

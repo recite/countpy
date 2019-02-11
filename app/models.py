@@ -9,13 +9,14 @@ Contains all the model objects and their schemas.
 import os
 import re
 import json
+import time
 from functools import partial
 from datetime import datetime
 from typing import Set, List, Dict, DefaultDict
 from collections import namedtuple, defaultdict
-from . import db
+from . import app, db, singlewrite
 
-__all__ = ['Repository', 'Package']
+__all__ = ['Repository', 'Package', 'Snapshot']
 
 _KEYSEP = ':'
 
@@ -79,6 +80,7 @@ class HashType:
         return cls.mset(name, {field: value})
 
     @classmethod
+    @singlewrite
     def mset(cls, name, mapping):
         assert len(mapping) > 0, 'Nothing to set.'
         now = datetime.utcnow()
@@ -541,3 +543,34 @@ class Repository(HashType):
 
     def query_packages(self):
         yield from (Package(i) for i in self.packages)
+
+
+class Snapshot:
+    def __init__(self, interval=None):
+        self.interval = int(interval or app.config.get('REDIS_SAVE_INTERVAL'))
+        self._lastsave = time.time()
+
+    @property
+    def elapse(self):
+        return time.time() - self._lastsave
+
+    @property
+    def remain(self):
+        delta = self.interval - self.elapse
+        return delta if delta > 0 else 0
+
+    @singlewrite
+    def _do_save(self):
+        db.save()
+
+    def saveable(self):
+        return self.elapse >= self.interval
+
+    def wait(self):
+        if not self.saveable():
+            time.sleep(self.remain)
+
+    def save(self, force=False):
+        if force or self.saveable():
+            self._do_save()
+            self._lastsave = time.time()

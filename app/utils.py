@@ -141,8 +141,8 @@ class Pagination:
     def has_next(self):
         return self.page < self.pages
 
-    def iter_pages(self, left_edge=2, left_current=2,
-                   right_current=3, right_edge=2):
+    def iter_pages(self, left_edge=2, left_current=1,
+                   right_current=2, right_edge=2):
         last = 0
         for num in range(1, self.pages + 1):
             if num <= left_edge or \

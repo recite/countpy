@@ -17,6 +17,7 @@ __all__ = [
     'LoginError',
     'NotFoundError',
     'BadRequestError',
+    'RepoBlockedError',
     'ServiceUnavailableError',
     'UserAgentError',
     'RateLimitError',
@@ -43,9 +44,14 @@ class GithubException(Exception):
         self.name = self.__class__.__name__
         self.status = status
         self.data = data
+        self.message = ''
+        if isinstance(data, dict) and 'message' in data:
+            self.message = data['message']
 
     def __str__(self):
-        return '%s: %s %s' % (self.prefix or self.name, self.status, self.data)
+        return '%s: %s %s' % (
+            self.prefix or self.name, self.status, self.message or self.data
+        )
 
 
 class NotFoundError(GithubException):
@@ -53,6 +59,10 @@ class NotFoundError(GithubException):
 
 
 class BadRequestError(GithubException):
+    pass
+
+
+class RepoBlockedError(GithubException):
     pass
 
 
@@ -160,6 +170,8 @@ def parse_response(response, json=True):
             cls = AbuseLimitError
         elif 'blob is too large' in message:
             cls = BlobTooLargeError
+        elif 'repository access blocked' == message:
+            cls = RepoBlockedError
 
     elif response.status_code == codes.NOT_FOUND:
         cls = NotFoundError

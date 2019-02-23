@@ -11,7 +11,7 @@ from modules.logger import get_logger
 from . import get_endpoint
 from .limit import GithubLimit, retry
 from .exceptions import parse_response, NotFoundError, BadRequestError, \
-    BlobTooLargeError, GithubException, LegalReasonError
+    BlobTooLargeError, GithubException, LegalReasonError, RepoBlockedError
 
 __all__ = [
     'GithubClient',
@@ -24,7 +24,7 @@ __all__ = [
 DEFAULT_REQUEST_TIMEOUT = 15
 MAX_RESULTS_PER_PAGE = 100
 
-_bypass_errors = (NotFoundError, BadRequestError, LegalReasonError)
+_bypass_errors = (NotFoundError, BadRequestError, LegalReasonError, RepoBlockedError)
 
 
 class GithubClient:

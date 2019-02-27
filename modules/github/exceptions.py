@@ -29,9 +29,10 @@ __all__ = [
     'handle_exception'
 ]
 
-SHORT_BREAK_DELAY = 5
-MEDIUM_BREAK_DELAY = 15
+SHORT_BREAK_DELAY = 15
+MEDIUM_BREAK_DELAY = 30
 LONG_BREAK_DELAY = 60
+SUPER_LONG_BREAK_DELAY = 1800
 DEFAULT_BREAK_DELAY = MEDIUM_BREAK_DELAY
 
 
@@ -79,12 +80,12 @@ class UserAgentError(GithubException):
 
 
 class RateLimitError(GithubException):
-    delay = SHORT_BREAK_DELAY
+    delay = SUPER_LONG_BREAK_DELAY
     prefix = 'GitHub limit exceeded'
 
 
 class AbuseLimitError(GithubException):
-    delay = LONG_BREAK_DELAY
+    delay = SUPER_LONG_BREAK_DELAY
     prefix = 'GitHub abuse limit violated'
 
 

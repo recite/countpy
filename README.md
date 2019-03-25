@@ -41,3 +41,7 @@ http://countpy.com supports two functions:
 ## Authors
 
 Gaurav Sood and Khanh Tran
+
+## License
+
+The package is released under the [MIT License](https://opensource.org/licenses/MIT).

@@ -8,9 +8,15 @@ Then there are sore spots that are shared by both R and Python developers. Downl
 
 We leverage the Github search API to achieve this.
 
-### Application
+### Functionality
 
-The structure of the underlying code is pretty simple. The website runs on Flask and postgres. And we run a cronjob at the backend that queries the Github API and updates the database. 
+http://countpy.com supports two functions:
+
+1. Search: Get information on imports, etc. for any Python package.
+
+2. Badge: To get a badge for the total number of imports etc. in Github, try http://countpy.com/badge/numpy
+
+### Outline of the Application
 
 1. **Searching GitHub:** The script [searchpy.py](searchpy.py) uses the GitHub search API to search all .py files for all `import` statements. The script can spawn multiple processes that use different GitHub credentials, all of which are stored in config.txt. Currently, the default is 2. The script respects Github Search API's limits. The meta logic of the limits is also stored in the config file to allow for easy change if Github changes. The script writes to a JSON file called `search_results_start_date.json`. The JSON file has the following fields: 
     * package_name: name of the package
@@ -21,23 +27,11 @@ The structure of the underlying code is pretty simple. The website runs on Flask
     * search_date: date the repo. was searched
 
     The script also gzips the final JSON file and stores it in `data/search_results_start_date.json.gzip`.
- 
-2. **Update DB:** The script [updatedb.py](updatedb.py) takes the JSON file, aggregates counts across packages and updates the db_table `package_counts` which has the following columns:
-    * package_name: name of the package
-    * n_repos_importing_package: number of repositories importing the package
-    * n_files_importing_package: number of files importing the package
-    * n_requirement_files_citing_package: number of requirement files with the package name
-    * date: the date the JSON file was started
 
-    The database continues to grow with each run. 
-
-    The script also tests format of each column. And it also allows us to take a directory of compressed JSON files in `data/` and insert data from all after clearing everything in the database. 
-
-3. **UI:** The UI is minimal. It provides a large search box in which you can search for the package. The search results lists all exact matches and any approximate matches (edit distance of 2). And if you click on the package name, it shows you a table:
+2. **UI:** The UI is minimal. It provides a large search box in which you can search for the package. The search results lists all exact matches and any approximate matches (edit distance of 2). And if you click on the package name, it shows you a table:
        
        ```
        package, number of repositories importing, number of files, number of requirements files, date
-
        ```
 
 ### Code Organization

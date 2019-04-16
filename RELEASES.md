@@ -1,3 +1,6 @@
+### v1.0.2
+* Handled db connection error
+
 ### v1.0.1
 
 * API for retrieving package badge

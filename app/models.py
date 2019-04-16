@@ -14,7 +14,7 @@ from functools import partial
 from datetime import datetime
 from typing import Set, List, Dict, DefaultDict
 from collections import namedtuple, defaultdict
-from . import app, db, singlewrite
+from . import app, db, singlewrite, retrycon
 
 __all__ = ['Repository', 'Package', 'Snapshot']
 
@@ -62,6 +62,7 @@ class HashType:
         return key.split(_KEYSEP, maxsplit=1)[-1]
 
     @classmethod
+    @retrycon()
     def exists(cls, name):
         return db.exists(cls.genkey(name))
 
@@ -70,6 +71,7 @@ class HashType:
         return cls(name) if cls.exists(name) else None
 
     @classmethod
+    @retrycon()
     def query_all(cls, name_only=False, lazy=True):
         parser = cls.no_prefix if name_only else cls
         ret = (parser(key) for key in db.keys(cls.genkey('*')))
@@ -81,6 +83,7 @@ class HashType:
 
     @classmethod
     @singlewrite
+    @retrycon()
     def mset(cls, name, mapping):
         assert len(mapping) > 0, 'Nothing to set.'
         now = datetime.utcnow()
@@ -89,10 +92,12 @@ class HashType:
         return now
 
     @classmethod
+    @retrycon()
     def get(cls, name, field):
         return cls.use_val(db.hget(cls.genkey(name), field), field)
 
     @classmethod
+    @retrycon()
     def mget(cls, name, fields):
         assert set(fields) <= set(cls.all_fields()), 'Unknown field found in %s' % fields
         values = db.hmget(cls.genkey(name), fields)
@@ -560,6 +565,7 @@ class Snapshot:
         return delta if delta > 0 else 0
 
     @singlewrite
+    @retrycon()
     def _do_save(self):
         db.save()
 

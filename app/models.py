@@ -281,7 +281,10 @@ class RepoFiles:
     def retract_content(cls, content, ftype):
         assert ftype in cls._ftypes, 'Unknown ftype "%s"' % ftype
         finder = cls._find_lines.get(ftype)
-        return '\n'.join(finder(content))
+        try:
+            return '\n'.join(finder(content))
+        except TypeError:
+            return ''
 
     @classmethod
     def parse_pyfile(cls, content):
